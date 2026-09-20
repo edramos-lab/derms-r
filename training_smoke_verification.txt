@@ -1,0 +1,36 @@
+fit epoch 1/1: {'epoch': 1, 'train_loss': 10.836742401123047, 'lr': 0.0001, 'val_accuracy': 0.5, 'val_precision_macro': 0.25, 'val_recall_macro': 0.5, 'val_f1_macro': 0.3333333333333333, 'val_mcc': 0.0, 'val_loss': 10.55682373046875}
+{
+  "synthetic_only": true,
+  "model": "mobilenetv4_conv_small.e2400_r224_in1k",
+  "metrics": {
+    "accuracy": 0.5,
+    "precision_macro": 0.25,
+    "recall_macro": 0.5,
+    "f1_macro": 0.3333333333333333,
+    "mcc": 0.0,
+    "loss": 10.55682373046875
+  },
+  "best_epoch": 1,
+  "environment": {
+    "packages": {
+      "torch": "2.0.1",
+      "torchvision": "0.15.2",
+      "timm": "1.0.29",
+      "numpy": "1.26.4",
+      "pandas": "2.3.3",
+      "scikit-learn": "1.7.2",
+      "albumentations": "2.0.8",
+      "opencv-python-headless": "4.11.0.86",
+      "Pillow": "9.3.0",
+      "scipy": "1.15.3",
+      "fvcore": "0.1.5.post20221221"
+    },
+    "python": "3.10.1 (v3.10.1:2cd268a3a9, Dec  6 2021, 14:28:59) [Clang 13.0.0 (clang-1300.0.29.3)]",
+    "platform": "macOS-26.3-arm64-arm-64bit",
+    "cuda": null,
+    "cudnn": null,
+    "gpu": [],
+    "cpu": "arm",
+    "threads": 2
+  }
+}

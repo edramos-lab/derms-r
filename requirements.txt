@@ -1,0 +1,16 @@
+# Python 3.10-3.12. Install the appropriate matching torch/torchvision CUDA wheels first.
+torch>=2.0.1,<3
+torchvision>=0.15.2,<1
+timm==1.0.29
+albumentations==2.0.8
+# NumPy <2 also supports older PyTorch 2.0 installations.
+numpy==1.26.4
+opencv-python-headless==4.11.0.86
+scikit-learn==1.7.2
+pandas==2.3.3
+scipy>=1.10,<1.16
+Pillow>=9.3,<12
+fvcore==0.1.5.post20221221
+
+# Optional tracking (imported only with --wandb).
+wandb>=0.19,<1

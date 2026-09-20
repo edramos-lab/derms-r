@@ -1,0 +1,22 @@
+{
+  "syntax": "passed",
+  "cli_imports": [
+    "train.py",
+    "analyze.py",
+    "test.py"
+  ],
+  "regression_tests": 7,
+  "regression_status": "passed",
+  "synthetic_cv_fits": 25,
+  "real_timm_synthetic_training": "mobilenetv4 passed",
+  "installed_timm": "1.0.29",
+  "registry_identifiers_validated": 12,
+  "not_exercised": [
+    "real datasets",
+    "pretrained weight downloads",
+    "CUDA",
+    "live W&B service",
+    "all architecture forward passes"
+  ],
+  "environment_note": "Checks used system Python 3.10 with compatible NumPy 1.26.4 and fvcore supplied from /private/tmp/derms_dependencies; no system packages were changed."
+}

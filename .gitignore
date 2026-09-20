@@ -1,0 +1,8 @@
+__pycache__/
+*.py[cod]
+.venv/
+datasets/
+results/
+wandb/
+*.pt
+.DS_Store

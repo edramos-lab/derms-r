@@ -1,0 +1,12 @@
+test_derms_known_value (__main__.ProtocolTests) ... ok
+test_epoch_resume_is_identical (__main__.ProtocolTests) ... ok
+test_full_workflow_and_guards (__main__.ProtocolTests) ... ok
+test_nested_group_splits (__main__.ProtocolTests) ... ok
+test_official_partition_dispatch (__main__.ProtocolTests) ... ok
+test_test_overlap_rejected_and_holdout_stable (__main__.ProtocolTests) ... ok
+test_tracking_mirror_failure (__main__.ProtocolTests) ... ok
+
+----------------------------------------------------------------------
+Ran 7 tests in 2.346s
+
+OK

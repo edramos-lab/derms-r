@@ -1,0 +1,471 @@
+{
+  "timm": "1.0.29",
+  "models": {
+    "resnet50": {
+      "identifier": "resnet50.a1_in1k",
+      "pretrained_config": {
+        "url": "https://github.com/rwightman/pytorch-image-models/releases/download/v0.1-rsb-weights/resnet50_a1_0-14fe96d1.pth",
+        "hf_hub_id": "timm/resnet50.a1_in1k",
+        "architecture": "resnet50",
+        "tag": "a1_in1k",
+        "custom_load": false,
+        "input_size": [
+          3,
+          224,
+          224
+        ],
+        "test_input_size": [
+          3,
+          288,
+          288
+        ],
+        "fixed_input_size": false,
+        "interpolation": "bicubic",
+        "crop_pct": 0.95,
+        "test_crop_pct": 1.0,
+        "crop_mode": "center",
+        "mean": [
+          0.485,
+          0.456,
+          0.406
+        ],
+        "std": [
+          0.229,
+          0.224,
+          0.225
+        ],
+        "num_classes": 1000,
+        "pool_size": [
+          7,
+          7
+        ],
+        "first_conv": "conv1",
+        "classifier": "fc",
+        "license": "apache-2.0",
+        "origin_url": "https://github.com/huggingface/pytorch-image-models",
+        "paper_ids": "arXiv:2110.00476"
+      }
+    },
+    "efficientnet_b0": {
+      "identifier": "efficientnet_b0.ra_in1k",
+      "pretrained_config": {
+        "url": "https://github.com/rwightman/pytorch-image-models/releases/download/v0.1-weights/efficientnet_b0_ra-3dd342df.pth",
+        "hf_hub_id": "timm/efficientnet_b0.ra_in1k",
+        "architecture": "efficientnet_b0",
+        "tag": "ra_in1k",
+        "custom_load": false,
+        "input_size": [
+          3,
+          224,
+          224
+        ],
+        "fixed_input_size": false,
+        "interpolation": "bicubic",
+        "crop_pct": 0.875,
+        "crop_mode": "center",
+        "mean": [
+          0.485,
+          0.456,
+          0.406
+        ],
+        "std": [
+          0.229,
+          0.224,
+          0.225
+        ],
+        "num_classes": 1000,
+        "pool_size": [
+          7,
+          7
+        ],
+        "first_conv": "conv_stem",
+        "classifier": "classifier",
+        "license": "apache-2.0"
+      }
+    },
+    "efficientnetv2_s": {
+      "identifier": "tf_efficientnetv2_s.in1k",
+      "pretrained_config": {
+        "url": "https://github.com/rwightman/pytorch-image-models/releases/download/v0.1-effv2-weights/tf_efficientnetv2_s-eb54923e.pth",
+        "hf_hub_id": "timm/tf_efficientnetv2_s.in1k",
+        "architecture": "tf_efficientnetv2_s",
+        "tag": "in1k",
+        "custom_load": false,
+        "input_size": [
+          3,
+          300,
+          300
+        ],
+        "test_input_size": [
+          3,
+          384,
+          384
+        ],
+        "fixed_input_size": false,
+        "interpolation": "bicubic",
+        "crop_pct": 1.0,
+        "crop_mode": "center",
+        "mean": [
+          0.5,
+          0.5,
+          0.5
+        ],
+        "std": [
+          0.5,
+          0.5,
+          0.5
+        ],
+        "num_classes": 1000,
+        "pool_size": [
+          10,
+          10
+        ],
+        "first_conv": "conv_stem",
+        "classifier": "classifier",
+        "license": "apache-2.0"
+      }
+    },
+    "convnextv2_tiny": {
+      "identifier": "convnextv2_tiny.fcmae_ft_in1k",
+      "pretrained_config": {
+        "url": "https://dl.fbaipublicfiles.com/convnext/convnextv2/im1k/convnextv2_tiny_1k_224_ema.pt",
+        "hf_hub_id": "timm/convnextv2_tiny.fcmae_ft_in1k",
+        "architecture": "convnextv2_tiny",
+        "tag": "fcmae_ft_in1k",
+        "custom_load": false,
+        "input_size": [
+          3,
+          224,
+          224
+        ],
+        "test_input_size": [
+          3,
+          288,
+          288
+        ],
+        "fixed_input_size": false,
+        "interpolation": "bicubic",
+        "crop_pct": 0.875,
+        "test_crop_pct": 1.0,
+        "crop_mode": "center",
+        "mean": [
+          0.485,
+          0.456,
+          0.406
+        ],
+        "std": [
+          0.229,
+          0.224,
+          0.225
+        ],
+        "num_classes": 1000,
+        "pool_size": [
+          7,
+          7
+        ],
+        "first_conv": "stem.0",
+        "classifier": "head.fc",
+        "license": "cc-by-nc-4.0",
+        "origin_url": "https://github.com/facebookresearch/ConvNeXt-V2",
+        "paper_name": "ConvNeXt-V2: Co-designing and Scaling ConvNets with Masked Autoencoders",
+        "paper_ids": "arXiv:2301.00808"
+      }
+    },
+    "xception41": {
+      "identifier": "xception41.tf_in1k",
+      "pretrained_config": {
+        "url": "",
+        "hf_hub_id": "timm/xception41.tf_in1k",
+        "architecture": "xception41",
+        "tag": "tf_in1k",
+        "custom_load": false,
+        "input_size": [
+          3,
+          299,
+          299
+        ],
+        "fixed_input_size": false,
+        "interpolation": "bicubic",
+        "crop_pct": 0.903,
+        "crop_mode": "center",
+        "mean": [
+          0.5,
+          0.5,
+          0.5
+        ],
+        "std": [
+          0.5,
+          0.5,
+          0.5
+        ],
+        "num_classes": 1000,
+        "pool_size": [
+          10,
+          10
+        ],
+        "first_conv": "stem.0.conv",
+        "classifier": "head.fc",
+        "license": "apache-2.0"
+      }
+    },
+    "vit_base": {
+      "identifier": "vit_base_patch16_224.augreg_in1k",
+      "pretrained_config": {
+        "url": "https://storage.googleapis.com/vit_models/augreg/B_16-i1k-300ep-lr_0.001-aug_strong2-wd_0.1-do_0.1-sd_0.1--imagenet2012-steps_20k-lr_0.01-res_224.npz",
+        "hf_hub_id": "timm/vit_base_patch16_224.augreg_in1k",
+        "architecture": "vit_base_patch16_224",
+        "tag": "augreg_in1k",
+        "custom_load": true,
+        "input_size": [
+          3,
+          224,
+          224
+        ],
+        "fixed_input_size": true,
+        "interpolation": "bicubic",
+        "crop_pct": 0.9,
+        "crop_mode": "center",
+        "mean": [
+          0.5,
+          0.5,
+          0.5
+        ],
+        "std": [
+          0.5,
+          0.5,
+          0.5
+        ],
+        "num_classes": 1000,
+        "pool_size": null,
+        "first_conv": "patch_embed.proj",
+        "classifier": "head",
+        "license": "apache-2.0"
+      }
+    },
+    "deit3_base": {
+      "identifier": "deit3_base_patch16_224.fb_in1k",
+      "pretrained_config": {
+        "url": "https://dl.fbaipublicfiles.com/deit/deit_3_base_224_1k.pth",
+        "hf_hub_id": "timm/deit3_base_patch16_224.fb_in1k",
+        "architecture": "deit3_base_patch16_224",
+        "tag": "fb_in1k",
+        "custom_load": false,
+        "input_size": [
+          3,
+          224,
+          224
+        ],
+        "fixed_input_size": true,
+        "interpolation": "bicubic",
+        "crop_pct": 0.9,
+        "crop_mode": "center",
+        "mean": [
+          0.485,
+          0.456,
+          0.406
+        ],
+        "std": [
+          0.229,
+          0.224,
+          0.225
+        ],
+        "num_classes": 1000,
+        "pool_size": null,
+        "first_conv": "patch_embed.proj",
+        "classifier": "head",
+        "license": "apache-2.0"
+      }
+    },
+    "swin_tiny": {
+      "identifier": "swin_tiny_patch4_window7_224.ms_in1k",
+      "pretrained_config": {
+        "url": "https://github.com/SwinTransformer/storage/releases/download/v1.0.0/swin_tiny_patch4_window7_224.pth",
+        "hf_hub_id": "timm/swin_tiny_patch4_window7_224.ms_in1k",
+        "architecture": "swin_tiny_patch4_window7_224",
+        "tag": "ms_in1k",
+        "custom_load": false,
+        "input_size": [
+          3,
+          224,
+          224
+        ],
+        "fixed_input_size": true,
+        "interpolation": "bicubic",
+        "crop_pct": 0.9,
+        "crop_mode": "center",
+        "mean": [
+          0.485,
+          0.456,
+          0.406
+        ],
+        "std": [
+          0.229,
+          0.224,
+          0.225
+        ],
+        "num_classes": 1000,
+        "pool_size": [
+          7,
+          7
+        ],
+        "first_conv": "patch_embed.proj",
+        "classifier": "head.fc",
+        "license": "mit"
+      }
+    },
+    "maxvit_tiny": {
+      "identifier": "maxvit_tiny_tf_224.in1k",
+      "pretrained_config": {
+        "url": "",
+        "hf_hub_id": "timm/maxvit_tiny_tf_224.in1k",
+        "architecture": "maxvit_tiny_tf_224",
+        "tag": "in1k",
+        "custom_load": false,
+        "input_size": [
+          3,
+          224,
+          224
+        ],
+        "fixed_input_size": true,
+        "interpolation": "bicubic",
+        "crop_pct": 0.95,
+        "crop_mode": "center",
+        "mean": [
+          0.485,
+          0.456,
+          0.406
+        ],
+        "std": [
+          0.229,
+          0.224,
+          0.225
+        ],
+        "num_classes": 1000,
+        "pool_size": [
+          7,
+          7
+        ],
+        "first_conv": "stem.conv1",
+        "classifier": "head.fc",
+        "license": "apache-2.0"
+      }
+    },
+    "nextvit_base": {
+      "identifier": "nextvit_base.bd_in1k",
+      "pretrained_config": {
+        "url": "",
+        "hf_hub_id": "timm/nextvit_base.bd_in1k",
+        "architecture": "nextvit_base",
+        "tag": "bd_in1k",
+        "custom_load": false,
+        "input_size": [
+          3,
+          224,
+          224
+        ],
+        "fixed_input_size": false,
+        "interpolation": "bicubic",
+        "crop_pct": 0.95,
+        "crop_mode": "center",
+        "mean": [
+          0.485,
+          0.456,
+          0.406
+        ],
+        "std": [
+          0.229,
+          0.224,
+          0.225
+        ],
+        "num_classes": 1000,
+        "pool_size": [
+          7,
+          7
+        ],
+        "first_conv": "stem.0.conv",
+        "classifier": "head.fc",
+        "license": "apache-2.0"
+      }
+    },
+    "efficientvit_b0": {
+      "identifier": "efficientvit_b0.r224_in1k",
+      "pretrained_config": {
+        "url": "",
+        "hf_hub_id": "timm/efficientvit_b0.r224_in1k",
+        "architecture": "efficientvit_b0",
+        "tag": "r224_in1k",
+        "custom_load": false,
+        "input_size": [
+          3,
+          224,
+          224
+        ],
+        "fixed_input_size": false,
+        "interpolation": "bicubic",
+        "crop_pct": 0.95,
+        "crop_mode": "center",
+        "mean": [
+          0.485,
+          0.456,
+          0.406
+        ],
+        "std": [
+          0.229,
+          0.224,
+          0.225
+        ],
+        "num_classes": 1000,
+        "pool_size": [
+          7,
+          7
+        ],
+        "first_conv": "stem.in_conv.conv",
+        "classifier": "head.classifier.4",
+        "license": "apache-2.0"
+      }
+    },
+    "mobilenetv4": {
+      "identifier": "mobilenetv4_conv_small.e2400_r224_in1k",
+      "pretrained_config": {
+        "url": "",
+        "hf_hub_id": "timm/mobilenetv4_conv_small.e2400_r224_in1k",
+        "architecture": "mobilenetv4_conv_small",
+        "tag": "e2400_r224_in1k",
+        "custom_load": false,
+        "input_size": [
+          3,
+          224,
+          224
+        ],
+        "test_input_size": [
+          3,
+          256,
+          256
+        ],
+        "fixed_input_size": false,
+        "interpolation": "bicubic",
+        "crop_pct": 0.875,
+        "test_crop_pct": 0.95,
+        "crop_mode": "center",
+        "mean": [
+          0.485,
+          0.456,
+          0.406
+        ],
+        "std": [
+          0.229,
+          0.224,
+          0.225
+        ],
+        "num_classes": 1000,
+        "pool_size": [
+          7,
+          7
+        ],
+        "first_conv": "conv_stem",
+        "classifier": "classifier",
+        "license": "apache-2.0"
+      }
+    }
+  }
+}

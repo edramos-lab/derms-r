@@ -34,6 +34,7 @@ from torchvision import datasets as tv
 
 from .config import *
 from .utils import *
+from .augmentation import training_augmentations
 
 
 def labels(ds):
@@ -75,6 +76,33 @@ def inventory(ds):
         h = hashlib.sha256(str(arr.shape).encode() + arr.tobytes()).hexdigest()
         records.append({'id': sample_id(ds, i), 'label': int(y[i]), 'sha256': h})
     return records
+
+
+def inferred_groups(records):
+    """Patient/sample groups from filenames, matching E2E-ImageClassification."""
+    from prepare_dataset import base_id
+    groups = []
+    for record in records:
+        relative = Path(record['id'])
+        class_name = relative.parts[0] if len(relative.parts) > 1 else ''
+        groups.append(f'{class_name}/{base_id(relative.name)}')
+    return groups
+
+
+def resolve_groups(cfg, records, prefix=''):
+    if cfg.get('all_groups'):
+        return all_groups(cfg['all_groups'], records, prefix)
+    if cfg.get('all_independent_images'):
+        return None
+    return inferred_groups(records)
+
+
+def all_split_dirs(root):
+    root = Path(root)
+    for train_name, test_name in (('development', 'test'), ('train', 'test'), ('Training', 'Testing')):
+        if (root / train_name).is_dir() and (root / test_name).is_dir():
+            return train_name, test_name
+    return None, None
 
 
 def all_groups(path, records, prefix=''):
@@ -140,14 +168,15 @@ def nested(units, uy, eligible, seed):
 def folds_for(records, groups, seed):
     units, uy = make_units(records, groups)
     counts = np.bincount(uy)
-    if min(counts) < 5:
-        raise ValueError('Five-fold stratification needs at least 5 independent units in every class.')
+    if min(counts) < FOLDS:
+        raise ValueError(f'{FOLDS}-fold stratification needs at least {FOLDS} independent units in every class.')
     folds = []
-    for k, (tr, va) in enumerate(StratifiedKFold(5, shuffle=True, random_state=seed).split(units, uy)):
+    for k, (tr, va) in enumerate(StratifiedKFold(FOLDS, shuffle=True, random_state=seed).split(units, uy)):
         subsets = nested(units, uy, tr, seed + 100 + k)
         folds.append({'train': expand(units, tr), 'val': expand(units, va), 'subsets': subsets})
     final_subsets = nested(units, uy, np.arange(len(units)), seed + 900)
     return {'folds': folds, 'final_subsets': final_subsets, 'independent_units': len(units),
+            'cv': 'StratifiedKFold',
             'stratification_unit': 'image' if len(units) == len(records) else 'duplicate/patient group'}
 
 
@@ -174,21 +203,19 @@ def development(name, cfg, download=False):
         records = inventory(ds)
         classes = list(getattr(ds, 'classes', [str(i) for i in sorted(set(labels(ds)))]))
     else:
-        if not cfg['all_groups'] and not cfg['all_independent_images']:
-            raise ValueError('ALL needs --all-groups patient.csv or --all-independent-images '
-                             'after confirming that images are independent patients/specimens.')
-        has_dev, has_test = (root / 'development').is_dir(), (root / 'test').is_dir()
-        if has_dev != has_test:
-            raise ValueError('ALL requires BOTH development/ and test/, or neither for flat holdout.')
-        if has_dev:
-            ds = tv.ImageFolder(root / 'development')
+        train_name, test_name = all_split_dirs(root)
+        if train_name is None and any((root / name).is_dir() for name in
+                                     ('development', 'train', 'Training', 'test', 'Testing')):
+            raise ValueError('ALL requires a matched pair development/test, train/test, or Training/Testing, or neither for flat holdout.')
+        if train_name:
+            ds = tv.ImageFolder(root / train_name)
             records = inventory(ds)
-            groups = all_groups(cfg['all_groups'], records, 'development/')
-            partition = {'kind': 'all_folders'}
+            groups = resolve_groups(cfg, records, prefix=f'{train_name}/')
+            partition = {'kind': 'all_folders', 'train_name': train_name, 'test_name': test_name}
         else:
             full = tv.ImageFolder(root)
             all_records = inventory(full)
-            full_groups = all_groups(cfg['all_groups'], all_records)
+            full_groups = resolve_groups(cfg, all_records)
             units, uy = make_units(all_records, full_groups)
             tr, te = train_test_split(np.arange(len(units)), test_size=cfg['holdout'],
                                      random_state=cfg['seed'], stratify=uy)
@@ -222,8 +249,7 @@ def prepare(name, cfg, output, download):
 def transform(cfg, augment, seed):
     ops = [A.Resize(224, 224)]
     if augment:
-        ops += [A.HorizontalFlip(p=cfg['flip_probability']),
-                A.Rotate(limit=cfg['rotation'], p=cfg['rotation_probability'], border_mode=0, fill=0)]
+        ops += training_augmentations(cfg)
     ops += [A.Normalize(mean=MEAN, std=STD), ToTensorV2()]
     return A.Compose(ops, seed=seed)
 

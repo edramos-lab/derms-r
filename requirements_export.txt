@@ -1,0 +1,10 @@
+# Optional runtime for export_models.py (not required to train or score DERMS-R).
+onnx>=1.15,<2
+onnxruntime-gpu>=1.18,<2
+# CPU-only alternative if you do not have a CUDA ONNX Runtime build:
+# onnxruntime>=1.18,<2
+
+# TensorRT engines must be built on the target GPU. Install these from NVIDIA,
+# not as a substitute for the CUDA toolkit / TensorRT packages on the machine:
+#   tensorrt>=8.6
+#   pycuda>=2024.1

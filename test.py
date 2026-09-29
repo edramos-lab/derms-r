@@ -8,6 +8,7 @@ import torch
 from torchvision import datasets as tv
 from torch.utils.data import Subset
 from derms import engine as b
+from derms.plots import save_classification_reports
 
 
 def untouched_test(name, cfg, plan, download):
@@ -19,10 +20,11 @@ def untouched_test(name, cfg, plan, download):
         classes = list(getattr(ds, 'classes', [str(i) for i in sorted(set(b.labels(ds)))]))
         groups = None
     elif kind == 'all_folders':
-        ds = tv.ImageFolder(root / 'test')
+        test_name = plan['partition'].get('test_name', 'test')
+        ds = tv.ImageFolder(root / test_name)
         records = b.inventory(ds)
         classes = list(ds.classes)
-        groups = b.all_groups(cfg['all_groups'], records, 'test/')
+        groups = b.resolve_groups(cfg, records, prefix=f'{test_name}/')
     elif kind == 'all_holdout':
         full = tv.ImageFolder(root)
         records_all = b.inventory(full)
@@ -32,7 +34,7 @@ def untouched_test(name, cfg, plan, download):
         ds = Subset(full, ids)
         records = [records_all[i] for i in ids]
         classes = list(full.classes)
-        all_groups = b.all_groups(cfg['all_groups'], records_all)
+        all_groups = b.resolve_groups(cfg, records_all)
         groups = [all_groups[i] for i in ids] if all_groups else None
     else:
         raise RuntimeError('Invalid partition mode.')
@@ -110,8 +112,9 @@ def main():
             raise RuntimeError('Checkpoint selection identity mismatch.')
         model.load_state_dict(checkpoint['model'])
         model.to(cfg['device'])
-        result, y, pred = b.evaluate(model, b.loader(ds, list(range(len(ds))), cfg, False,
+        result, y, pred, probs = b.evaluate(model, b.loader(ds, list(range(len(ds))), cfg, False,
                                       cfg['seed']), cfg['device'], len(plan['classes']))
+        save_classification_reports(folder, y, pred, probs, plan['classes'], stem='test')
         if cfg.get('save_probabilities', True):
             b.save_predictions(model, ds, list(range(len(ds))), cfg, folder / 'test_probabilities.npz')
         b.atomic_json(folder / 'test_predictions.json', {'ids': [r['id'] for r in records],
@@ -119,10 +122,12 @@ def main():
         b.atomic_json(folder / 'test_result.json', {**ticket, 'dataset': args.dataset,
                       'n_test': len(ds), 'metrics': result, 'selection': selection['winner'],
                       'evaluated_at_utc': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())})
+        artifacts = [folder / 'test_result.json', folder / 'test_confusion_matrix.png',
+                     folder / 'test_roc_curve.png', folder / 'test_classification_report.json']
         with b.Tracker(b.digest(ticket), 'test-' + b.digest(ticket)[:12], args.dataset,
                        {'lock': lock, 'test_fingerprint': test_hash}, 'locked-test') as tracker:
-            tracker.summary(result)
-            tracker.artifact([folder / 'test_result.json'])
+            tracker.summary({k: v for k, v in result.items() if not isinstance(v, (list, dict))})
+            tracker.artifact([path for path in artifacts if path.exists()])
         print(result)
 
 

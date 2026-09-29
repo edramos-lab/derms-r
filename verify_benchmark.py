@@ -15,6 +15,7 @@ from PIL import Image
 import torch
 from torch import nn
 from derms import engine as b
+from derms.metric import derms_r
 import analyze
 from derms.tracking import Tracker
 from derms import datasets as dataset_module
@@ -58,15 +59,19 @@ class ProtocolTests(unittest.TestCase):
         self.assertFalse(any('derms' in key.lower() for key in payload))
 
     def test_derms_known_value(self):
-        cfg = dict(alpha=2., beta=.5, gamma=.5, delta=.5, epsilon=.001)
-        result = b.components(.8, 4., .25, .003, cfg)
-        self.assertAlmostEqual(result['derms_raw'], .32)
-        self.assertEqual(result['stability_component'], .5)
+        import math
+        low, high = 0.8 - 0.003 / math.sqrt(2), 0.8 + 0.003 / math.sqrt(2)
+        result = derms_r([low, high], 4_000_000, 0.25)
+        self.assertAlmostEqual(result['derms_r'], .32)
+        self.assertAlmostEqual(result['stability'], .5)
+        self.assertIn(0.75, b.RATIOS)
+        self.assertEqual(tuple(b.RATIOS), (0.10, 0.25, 0.50, 0.75, 1.00))
 
     def test_nested_group_splits(self):
         records = [dict(id=str(i), label=i // 30, sha256=f'h{i//2}') for i in range(60)]
         groups = [f'p{i//3}' for i in range(60)]
         plan = b.folds_for(records, groups, 12)
+        self.assertEqual(plan['cv'], 'StratifiedKFold')
         seen = []
         for fold in plan['folds']:
             tr, va = set(fold['train']), set(fold['val'])
@@ -121,18 +126,29 @@ class ProtocolTests(unittest.TestCase):
             self.assertTrue((out / 'analysis/derms_summary.csv').exists())
             summary = b.read_json(out / 'all' / 'summary.json')
             for row in summary:
-                self.assertEqual(row['metric_ratio'], row['realized_ratio_mean'])
+                self.assertEqual(row['data_ratio'], row['ratio'])
+                self.assertIn('fold_1_accuracy', row)
+                self.assertIn('derms_r_raw', row)
+                self.assertIn('optimal_ratio', row)
+                self.assertIn(row['data_ratio'], (0.10, 0.25, 0.50, 0.75, 1.00))
             predictions = list(out.glob('all/*/r*/fold*/predictions.npz'))
             self.assertEqual(len(predictions), 25)
             with np.load(predictions[0]) as saved:
                 np.testing.assert_allclose(saved['probabilities'].sum(1), 1, atol=1e-6)
             self.assertEqual(len(summary), 5)
-            self.assertEqual(max(r['derms_normalized'] for r in summary), 1.)
+            self.assertEqual(max(r['derms_r_normalized'] for r in summary), 1.)
             self.assertTrue((out / 'all' / 'fold_results.csv').exists())
+            self.assertTrue((out / 'all' / 'architecture_optima.csv').exists())
+            self.assertTrue(list(out.glob('all/*/r*/fold*/val_confusion_matrix.png')))
+            self.assertTrue(list(out.glob('all/*/r*/fold*/val_roc_curve.png')))
             with patch.object(b, 'model_for', side_effect=tiny):
                 call(['--output', str(out), '--dataset', 'all'], t.main)
             result = b.read_json(out / 'all' / 'locked' / 'test_result.json')
             self.assertEqual(result['n_test'], 10)
+            self.assertTrue((out / 'all' / 'locked' / 'test_confusion_matrix.png').exists())
+            self.assertTrue((out / 'all' / 'locked' / 'test_roc_curve.png').exists())
+            self.assertIn('roc_auc_macro_ovr', result['metrics'])
+            self.assertIn('confusion_matrix', result['metrics'])
             with patch.object(b, 'inventory', side_effect=AssertionError('repeat accessed data')):
                 call(['--output', str(out), '--dataset', 'all'], t.main)
             # Config changes cannot be resumed.

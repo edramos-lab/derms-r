@@ -1,4 +1,12 @@
+"""Canonical DERMS-R constants. Do not change these defaults except for explicit sensitivity analysis."""
 RATIOS = (0.10, 0.25, 0.50, 0.75, 1.00)
+ALPHA = 2.0
+BETA = 0.5
+GAMMA = 0.5
+DELTA = 0.5
+P0 = 1_000_000.0
+SIGMA0 = 0.001
+FOLDS = 5
 REGISTRY = {
     'resnet50': 'resnet50.a1_in1k',
     'efficientnet_b0': 'efficientnet_b0.ra_in1k',
@@ -15,5 +23,4 @@ REGISTRY = {
 }
 DATASETS = ('cifar10', 'cifar100', 'flowers102', 'food101', 'all')
 MEAN, STD = (0.485, 0.456, 0.406), (0.229, 0.224, 0.225)
-SCHEMA = 2
-
+SCHEMA = 5

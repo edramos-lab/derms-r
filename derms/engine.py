@@ -36,20 +36,29 @@ from .config import *
 from .utils import *
 from .datasets import *
 from .models import *
-from .metric import *
+from .metric import derms_r, metric_kwargs, trainable_parameter_count
+from .normalization import add_normalized_column
+from .analysis import attach_architecture_optima
+from .plots import classification_scores, save_classification_reports
 from .tracking import Tracker, add_tracking_args, tracking_options
 
-def metrics(y, pred, loss, nclasses):
+def metrics(y, pred, loss, nclasses, probs=None):
     precision, recall, f1, _ = precision_recall_fscore_support(
         y, pred, labels=list(range(nclasses)), average='macro', zero_division=0)
-    return {'accuracy': float(accuracy_score(y, pred)), 'precision_macro': float(precision),
-            'recall_macro': float(recall), 'f1_macro': float(f1),
-            'mcc': float(matthews_corrcoef(y, pred)), 'loss': float(loss)}
+    result = {'accuracy': float(accuracy_score(y, pred)), 'precision_macro': float(precision),
+              'recall_macro': float(recall), 'f1_macro': float(f1),
+              'mcc': float(matthews_corrcoef(y, pred)), 'loss': float(loss)}
+    if probs is not None:
+        scores = classification_scores(y, pred, probs, nclasses)
+        result['roc_auc_macro_ovr'] = scores['roc_auc_macro_ovr']
+        result['roc_auc_per_class'] = scores['roc_auc_per_class']
+        result['confusion_matrix'] = scores['confusion_matrix']
+    return result
 
 
 def evaluate(model, dl, device, nclasses):
     model.eval()
-    y, pred, loss, n = [], [], 0.0, 0
+    y, pred, batches, loss, n = [], [], [], 0.0, 0
     with torch.inference_mode():
         for x, target in dl:
             x, target = x.to(device), target.to(device)
@@ -61,16 +70,18 @@ def evaluate(model, dl, device, nclasses):
             n += len(target)
             y.extend(target.cpu().tolist())
             pred.extend(logits.argmax(1).cpu().tolist())
+            batches.append(logits.softmax(1).cpu().numpy())
     if not n:
         raise ValueError('Empty evaluation set.')
-    return metrics(y, pred, loss / n, nclasses), y, pred
+    probs = np.concatenate(batches)
+    return metrics(y, pred, loss / n, nclasses, probs), y, pred, probs
 
 
 def cpu_state(model):
     return {k: v.detach().cpu().clone() for k, v in model.state_dict().items()}
 
 
-def fit(ds, train_ids, val_ids, cfg, name, nclasses, directory, identity, seed, epochs, tracker=None):
+def fit(ds, train_ids, val_ids, cfg, name, nclasses, directory, identity, seed, epochs, tracker=None, class_names=None):
     directory.mkdir(parents=True, exist_ok=True)
     seed_all(seed)
     last = directory / 'last.pt'
@@ -121,8 +132,8 @@ def fit(ds, train_ids, val_ids, cfg, name, nclasses, directory, identity, seed, 
             peak = max(peak or 0, torch.cuda.max_memory_allocated(cfg['device']))
         row = {'epoch': epoch + 1, 'train_loss': total / seen, 'lr': optimizer.param_groups[0]['lr']}
         if val_ids is not None:
-            result, _, _ = evaluate(model, loader(ds, val_ids, cfg, False, seed), cfg['device'], nclasses)
-            row.update({f'val_{k}': v for k, v in result.items()})
+            result, _, _, _ = evaluate(model, loader(ds, val_ids, cfg, False, seed), cfg['device'], nclasses)
+            row.update({f'val_{k}': v for k, v in result.items() if not isinstance(v, (list, dict))})
             if result['loss'] < best_loss:  # earliest epoch wins exact ties
                 best_loss, best_epoch = result['loss'], epoch + 1
                 best_state, best_metrics = cpu_state(model), result
@@ -141,6 +152,11 @@ def fit(ds, train_ids, val_ids, cfg, name, nclasses, directory, identity, seed, 
             tracker.epoch(row)
         print(f'{directory.name} epoch {epoch+1}/{epochs}: {row}', flush=True)
     model.load_state_dict(best_state)
+    if val_ids is not None:
+        best_metrics, y, pred, probs = evaluate(
+            model, loader(ds, val_ids, cfg, False, seed), cfg['device'], nclasses)
+        save_classification_reports(directory, y, pred, probs,
+                                    class_names or [str(i) for i in range(nclasses)], stem='val')
     atomic_torch(directory / 'best.pt', {'identity': identity, 'model': best_state,
                                        'best_epoch': best_epoch, 'metrics': best_metrics})
     atomic_json(directory / 'history.json', history)
@@ -170,7 +186,7 @@ def profile(model, cfg):
             timings.append((time.perf_counter() - t) * 1000)
         peak = torch.cuda.max_memory_allocated(device) if device.startswith('cuda') else None
     result = {'parameters': sum(p.numel() for p in model.parameters()),
-              'trainable_parameters': sum(p.numel() for p in model.parameters() if p.requires_grad),
+              'trainable_parameters': trainable_parameter_count(model),
               'latency_ms_mean': float(np.mean(timings)), 'latency_ms_median': float(np.median(timings)),
               'latency_ms_p95': float(np.percentile(timings, 95)), 'cuda_inference_peak_bytes': peak,
               'latency_batch_size': 1, 'precision': 'float32', 'input_shape': [1, 3, 224, 224]}
@@ -196,10 +212,12 @@ def run_identity(cfg, plan, name, ratio, fold):
 
 def aggregate(name, cfg, plan, output):
     rows, summary = [], []
+    params = metric_kwargs(cfg)
+    n_folds = int(cfg.get('folds', FOLDS))
     for model in cfg['models']:
         for ratio in RATIOS:
             cell = []
-            for fold in range(5):
+            for fold in range(n_folds):
                 directory = output / name / model / f'r{ratio:.2f}' / f'fold{fold}'
                 path = directory / 'result.json'
                 if not path.exists():
@@ -211,30 +229,48 @@ def aggregate(name, cfg, plan, output):
                     raise RuntimeError(f'Modified checkpoint: {directory}')
                 cell.append(row)
             rows.extend(cell)
-            s = {'dataset': name, 'model': model, 'timm_id': REGISTRY[model], 'ratio': ratio,
-                 'params_m': cell[0]['profile']['trainable_parameters'] / 1e6,
+            fold_accuracies = [r['metrics']['accuracy'] for r in cell]
+            num_params = cell[0]['profile']['trainable_parameters']
+            # Nominal operating-point ratio r is fixed; realized fractions are recorded, not scored.
+            scored = derms_r(fold_accuracies, num_params, ratio, **params)
+            s = {'dataset': name, 'architecture': model, 'model': model, 'timm_id': REGISTRY[model],
+                 'num_parameters': num_params, 'data_ratio': ratio, 'ratio': ratio,
+                 'number_of_folds': n_folds,
                  'realized_ratio_mean': float(np.mean([r['realized_ratio'] for r in cell])),
                  'best_epoch_median': int(np.median([r['best_epoch'] for r in cell]))}
-            for key in ('accuracy', 'precision_macro', 'recall_macro', 'f1_macro', 'mcc', 'loss'):
-                values = [r['metrics'][key] for r in cell]
-                s[f'{key}_mean'], s[f'{key}_std'] = float(np.mean(values)), float(np.std(values, ddof=1))
-            s['metric_ratio'] = s['realized_ratio_mean']
-            s.update(components(s['accuracy_mean'], s['params_m'], s['metric_ratio'], s['accuracy_std'], cfg))
+            for k, acc in enumerate(fold_accuracies, 1):
+                s[f'fold_{k}_accuracy'] = acc
+            s['mean_validation_accuracy'] = scored['mean_accuracy']
+            s['sd_validation_accuracy'] = scored['sd_accuracy']
+            s['performance_component'] = scored['performance']
+            s['data_efficiency_component'] = scored['data_efficiency']
+            s['complexity_efficiency_component'] = scored['complexity_efficiency']
+            s['stability_component'] = scored['stability']
+            s['derms_r_raw'] = scored['derms_r']
+            for key in ('accuracy', 'precision_macro', 'recall_macro', 'f1_macro', 'mcc', 'loss', 'roc_auc_macro_ovr'):
+                values = [r['metrics'].get(key) for r in cell]
+                if any(v is None for v in values):
+                    s[f'{key}_mean'], s[f'{key}_std'] = None, None
+                else:
+                    s[f'{key}_mean'], s[f'{key}_std'] = float(np.mean(values)), float(np.std(values, ddof=1))
             for key in ('latency_ms_mean', 'flops', 'cuda_inference_peak_bytes'):
                 values = [r['profile'].get(key) for r in cell]
                 s[key + '_mean'] = float(np.mean(values)) if all(v is not None for v in values) else None
             s['realized_ratio_std'] = float(np.std([r['realized_ratio'] for r in cell], ddof=1))
             summary.append(s)
     df = pd.DataFrame(summary)
-    maximum = df.derms_raw.max()
-    df['derms_normalized'] = df.derms_raw / maximum if maximum > 0 else 0.0
-    df['derms_rank'] = df.derms_raw.rank(method='average', ascending=False)
+    df = add_normalized_column(df)
+    df = attach_architecture_optima(df)
+    df['derms_rank'] = df.derms_r_raw.rank(method='average', ascending=False)
     df['accuracy_rank'] = df.accuracy_mean.rank(method='average', ascending=False)
-    df['derms_rank_within_ratio'] = df.groupby('ratio').derms_raw.rank(method='average', ascending=False)
-    df = df.sort_values(['derms_rank', 'model', 'ratio'])
+    df['derms_rank_within_ratio'] = df.groupby('data_ratio').derms_r_raw.rank(method='average', ascending=False)
+    df = df.sort_values(['derms_r_raw', 'model', 'ratio'], ascending=[False, True, True])
     atomic_json(output / name / 'summary.json', df.astype(object).where(pd.notna(df), None).to_dict(orient='records'))
     df.to_csv(output / name / 'summary.csv', index=False)
     pd.json_normalize(rows).to_csv(output / name / 'fold_results.csv', index=False)
+    optima = df.drop_duplicates(['dataset', 'architecture'])[
+        ['dataset', 'architecture', 'num_parameters', 'optimal_ratio', 'optimal_derms_r']]
+    optima.to_csv(output / name / 'architecture_optima.csv', index=False)
     return df
 
 
@@ -256,11 +292,13 @@ def benchmark(name, ds, plan, cfg, output):
                               'run_id': identity, 'split_hash': plan['hash'],
                               'realized_ratio': len(indices) / len(split['train'])}) as tracker:
                     trained, result, epoch, peak = fit(ds, indices, split['val'], cfg, model, nclasses,
-                        directory, identity, cfg['seed'] + fold * 100000, cfg['epochs'], tracker)
+                        directory, identity, cfg['seed'] + fold * 100000, cfg['epochs'], tracker,
+                        class_names=plan['classes'])
                     prof = profile(trained, cfg)
                     if cfg.get('save_probabilities', True):
                         save_predictions(trained, ds, split['val'], cfg, directory / 'predictions.npz')
-                    tracker.summary({**result, **prof, 'best_epoch': epoch, 'cuda_train_peak_bytes': peak})
+                    tracker.summary({**{k: v for k, v in result.items() if not isinstance(v, (list, dict))},
+                                    **prof, 'best_epoch': epoch, 'cuda_train_peak_bytes': peak})
                     tracker.checkpoint(directory / 'best.pt')
                 atomic_json(directory / 'result.json', {'identity': identity, 'dataset': name, 'model': model,
                     'ratio': ratio, 'fold': fold, 'train_n': len(indices), 'val_n': len(split['val']),
@@ -276,12 +314,14 @@ def benchmark(name, ds, plan, cfg, output):
 
 def lock_selected(name, ds, plan, cfg, output):
     df = aggregate(name, cfg, plan, output)
-    winner = df.astype(object).where(pd.notna(df), None).iloc[0].to_dict()  # raw score, then model alias/ratio deterministic tie-break
+    # Select after scoring every architecture × ratio. Never filter by max accuracy first.
+    winner = df.astype(object).where(pd.notna(df), None).iloc[0].to_dict()
     directory = output / name / 'locked'
     directory.mkdir(exist_ok=True)
     selection = {'config_hash': digest(cfg), 'split_hash': plan['hash'], 'winner': winner,
                  'final_realized_ratio': len(plan['final_subsets'][f'{winner["ratio"]:.2f}']) / len(ds),
-                 'epochs': int(winner['best_epoch_median']), 'policy': 'max_derms_then_model_then_ratio',
+                 'epochs': int(winner['best_epoch_median']),
+                 'policy': 'max_derms_r_then_model_then_ratio',
                  'training_indices': plan['final_subsets'][f'{winner["ratio"]:.2f}']}
     selection['identity'] = digest(selection)
     selection_path = directory / 'selection.json'
@@ -326,12 +366,21 @@ def parser():
     p.add_argument('--pretrained', action=argparse.BooleanOptionalAction, default=True)
     p.add_argument('--augmentation', action=argparse.BooleanOptionalAction, default=True)
     p.add_argument('--flip-probability', type=float, default=0.5)
-    p.add_argument('--rotation', type=float, default=10.0)
-    p.add_argument('--rotation-probability', type=float, default=0.3)
+    p.add_argument('--rotation', type=float, default=20.0)
+    p.add_argument('--rotation-probability', type=float, default=1.0)
+    p.add_argument('--hsv-probability', type=float, default=0.8)
+    p.add_argument('--lab-probability', type=float, default=0.8)
+    p.add_argument('--brightness-contrast-probability', type=float, default=0.8)
+    p.add_argument('--gauss-noise-probability', type=float, default=0.15)
+    p.add_argument('--blur-probability', type=float, default=0.15)
     p.add_argument('--warmup', type=int, default=10)
     p.add_argument('--latency-repeats', type=int, default=50)
-    for name, default in [('alpha', 2.), ('beta', .5), ('gamma', .5), ('delta', .5), ('epsilon', .001)]:
-        p.add_argument('--' + name, type=float, default=default)
+    p.add_argument('--alpha', type=float, default=ALPHA)
+    p.add_argument('--beta', type=float, default=BETA)
+    p.add_argument('--gamma', type=float, default=GAMMA)
+    p.add_argument('--delta', type=float, default=DELTA)
+    p.add_argument('--p0', type=float, default=P0)
+    p.add_argument('--sigma0', type=float, default=SIGMA0)
     p.add_argument('--download', action='store_true')
     p.add_argument('--resume', action='store_true')
     p.add_argument('--verify-models', action='store_true', help='verify installed IDs and print report; no data access')
@@ -357,11 +406,14 @@ def main():
     if args.device.startswith('cuda') and not torch.cuda.is_available():
         raise RuntimeError('CUDA requested but unavailable.')
     if any(not math.isfinite(getattr(args, k)) or getattr(args, k) <= 0 for k in
-           ('lr', 'alpha', 'beta', 'gamma', 'delta', 'epsilon')):
+           ('lr', 'alpha', 'beta', 'gamma', 'delta', 'p0', 'sigma0')):
         raise ValueError('lr and score parameters must be finite and strictly positive.')
     if not math.isfinite(args.weight_decay) or args.weight_decay < 0 or not 0 <= args.rotation <= 180:
         raise ValueError('Invalid weight decay or rotation.')
-    if not all(0 <= x <= 1 for x in (args.flip_probability, args.rotation_probability)):
+    if not all(0 <= x <= 1 for x in (args.flip_probability, args.rotation_probability,
+                                     args.hsv_probability, args.lab_probability,
+                                     args.brightness_contrast_probability,
+                                     args.gauss_noise_probability, args.blur_probability)):
         raise ValueError('Augmentation probabilities must be in [0,1].')
     if len(set(args.models)) != len(args.models) or len(set(args.datasets)) != len(args.datasets):
         raise ValueError('Duplicate dataset/model selections.')
@@ -372,7 +424,7 @@ def main():
     torch.set_num_threads(args.threads)
     cfg = {k: str(v.resolve()) if isinstance(v, Path) else v for k, v in vars(args).items()
            if not k.startswith('wandb') and k not in ('output', 'download', 'resume', 'verify_models', 'prepare_only', 'lock')}
-    cfg.update(schema=SCHEMA, ratios=list(RATIOS), folds=5, image_size=224,
+    cfg.update(schema=SCHEMA, ratios=list(RATIOS), folds=FOLDS, image_size=224,
                normalization={'mean': MEAN, 'std': STD}, precision='float32',
                source_hashes={n: file_hash(project_root() / n) for n in source_files()},
                groups_sha256=file_hash(args.all_groups) if args.all_groups else None,
@@ -410,7 +462,7 @@ def project_root():
 
 def source_files():
     root = project_root()
-    return ['train.py', 'analyze.py', 'test.py'] + sorted(p.relative_to(root).as_posix() for p in (root / 'derms').glob('*.py'))
+    return ['train.py', 'analyze.py', 'test.py', 'prepare_dataset.py'] + sorted(p.relative_to(root).as_posix() for p in (root / 'derms').glob('*.py'))
 
 
 def save_predictions(model, ds, indices, cfg, path):

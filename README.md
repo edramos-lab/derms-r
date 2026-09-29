@@ -1244,6 +1244,24 @@ python analyze.py --output ./results/cifar10
 
 Exponents and scale constants are configurable (`--alpha`, `--beta`, `--gamma`, `--delta`, `--p0`, `--sigma0`) and default to the canonical baseline. Changing them requires a new output directory.
 
+## Experiment tracking (optional)
+
+`train.py` and `analyze.py` can mirror runs to Weights & Biases and/or MLflow. Local JSON/CSV results remain authoritative; a tracker outage only emits a warning and never fails a run.
+
+```bash
+# Weights & Biases
+python train.py --data ./datasets --output ./results/cifar10 --datasets cifar10 --wandb --wandb-project derms-r
+
+# MLflow (local file store under <output>/mlruns by default, or set --mlflow-tracking-uri / MLFLOW_TRACKING_URI)
+python train.py --data ./datasets --output ./results/cifar10 --datasets cifar10 --mlflow --mlflow-experiment derms-r
+mlflow ui --backend-store-uri ./results/cifar10/mlruns
+
+# Both at once, plus checkpoint artifact uploads
+python train.py --data ./datasets --output ./results/cifar10 --datasets cifar10 --wandb --mlflow --wandb-artifacts --mlflow-artifacts
+```
+
+`--wandb-config path/to/extra.json` supplies additional metadata mirrored to whichever tracker(s) are enabled; it cannot override the recorded protocol. Tracking flags are excluded from the hashed run configuration, so enabling/disabling them does not require a new output directory.
+
 ## ALL data, splits, and training protocol
 
 - CIFAR-10/100: official train is development; official test is held out. Flowers-102: official train + val is development. Food-101: official train/test. No official partitions are recombined with test data.

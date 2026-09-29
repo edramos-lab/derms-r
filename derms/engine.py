@@ -423,7 +423,8 @@ def main():
         raise ValueError('Seed outside supported range.')
     torch.set_num_threads(args.threads)
     cfg = {k: str(v.resolve()) if isinstance(v, Path) else v for k, v in vars(args).items()
-           if not k.startswith('wandb') and k not in ('output', 'download', 'resume', 'verify_models', 'prepare_only', 'lock')}
+           if not k.startswith(('wandb', 'mlflow'))
+           and k not in ('output', 'download', 'resume', 'verify_models', 'prepare_only', 'lock')}
     cfg.update(schema=SCHEMA, ratios=list(RATIOS), folds=FOLDS, image_size=224,
                normalization={'mean': MEAN, 'std': STD}, precision='float32',
                source_hashes={n: file_hash(project_root() / n) for n in source_files()},

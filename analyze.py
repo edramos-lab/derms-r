@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Aggregate complete development CV, score ablations/sensitivity, and mirror results to W&B."""
+"""Aggregate complete development CV, score ablations/sensitivity, and mirror results to W&B/MLflow."""
 import argparse
 from pathlib import Path
 import pandas as pd

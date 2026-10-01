@@ -255,6 +255,14 @@ class ApiTests(unittest.TestCase):
         self.tmp = tempfile.TemporaryDirectory()
         self.docker = FakeDocker()
         self.app = App(docker=self.docker, settings=settings(Path(self.tmp.name)))
+        # Bypass password hashing/the bootstrap admin's forced password change:
+        # tests only need an authenticated session, not real credentials.
+        self.app.auth.users["tester"] = {
+            "salt": "00", "hash": "", "role": "sysadmin",
+            "created_at": "2026-01-01T00:00:00+00:00", "must_change_password": False,
+        }
+        token = self.app.auth.create_session("tester", "sysadmin")
+        self.session_cookie = f"session={token}"
         self.httpd = ThreadingHTTPServer(("127.0.0.1", 0), self.app.handler_class())
         self.thread = threading.Thread(target=self.httpd.serve_forever, daemon=True)
         self.thread.start()
@@ -271,6 +279,7 @@ class ApiTests(unittest.TestCase):
         req = urllib.request.Request(self.base + path, data=data, method=method)
         if data is not None:
             req.add_header("Content-Type", "application/json")
+        req.add_header("Cookie", self.session_cookie)
         with urllib.request.urlopen(req) as response:
             body = response.read().decode()
             return response.status, json.loads(body) if path.startswith("/api/") else body
@@ -282,7 +291,7 @@ class ApiTests(unittest.TestCase):
         self.assertIn("Prepare Dataset", body)
         self.assertIn("Dashboard", body)
         self.assertIn("EDA", body)
-        self.assertIn("Administration", body)
+        self.assertIn("Audit trail", body)
 
     def test_status_reports_mlflow_on_its_network(self):
         status, body = self.request("GET", "/api/status")

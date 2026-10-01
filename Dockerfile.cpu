@@ -1,0 +1,38 @@
+# syntax=docker/dockerfile:1
+# Native CPU training image for ARM64 Macs and CPU-only Linux hosts.
+# Keep this separate from the CUDA image: pytorch/pytorch CUDA releases are
+# amd64-only and run extremely slowly through QEMU on Apple Silicon.
+FROM python:3.11-slim
+
+ENV NO_ALBUMENTATIONS_UPDATE=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1 \
+    GIT_PYTHON_REFRESH=quiet
+
+WORKDIR /workspace
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        libgl1 \
+        libglib2.0-0 \
+    && rm -rf /var/lib/apt/lists/*
+
+# PyPI publishes native Linux ARM64 CPU wheels for torch and torchvision.
+# Export-only CUDA packages are intentionally excluded from this image.
+COPY requirements.txt ./
+# The native ARM torch wheel is large. Install it in its own cached layer and
+# tolerate slow links; a later dependency failure will not download it again.
+# Pin the repository's tested pair. PyTorch 2.4.1 publishes an 85 MB native
+# aarch64 CPU wheel; unconstrained newer releases pull multi-gigabyte CUDA 13
+# dependencies even on ARM Linux.
+RUN pip install --retries 20 --timeout 1000 \
+        "torch==2.4.1" "torchvision==0.19.1"
+RUN pip install --retries 20 --timeout 1000 -r requirements.txt
+
+COPY . .
+
+RUN mkdir -p datasets results
+VOLUME ["/workspace/datasets", "/workspace/results"]
+
+ENTRYPOINT ["python"]
+CMD ["train.py", "--verify-models"]

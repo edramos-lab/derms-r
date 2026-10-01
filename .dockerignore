@@ -1,0 +1,12 @@
+.git
+__pycache__/
+*.py[cod]
+.venv/
+datasets/
+results/
+wandb/
+mlruns/
+mlflow-data/
+hf-cache/
+*.pt
+.DS_Store

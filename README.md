@@ -1244,6 +1244,45 @@ python analyze.py --output ./results/cifar10
 
 Exponents and scale constants are configurable (`--alpha`, `--beta`, `--gamma`, `--delta`, `--p0`, `--sigma0`) and default to the canonical baseline. Changing them requires a new output directory.
 
+## Training configuration page
+
+The configuration page launches `train.py` in the `derms-r-train` image. MLflow stays in its own container. The page finds that container, attaches the training container to the same user-defined network (or connects both to `derms-r` when MLflow is only on the default bridge), and passes `--mlflow-tracking-uri http://<mlflow-container>:<port>` so metrics reach MLflow over Docker DNS.
+
+With Docker running and the MLflow container already up, from the repository root:
+
+```bash
+docker compose --profile train build
+docker compose up orchestrator
+```
+
+Open http://localhost:8080. The sidebar has Dashboard, Configuration, EDA, and Administration. Start Training or Prepare Dataset from Configuration. Runs show up in the existing MLflow UI. If more than one MLflow container is running, set `MLFLOW_CONTAINER` to the container name before `docker compose up`.
+
+The default Compose file builds `derms-r-train:cpu` from `Dockerfile.cpu` for
+the host architecture. On an M-series Mac this is native ARM64, so it does not
+emulate x86 PyTorch.
+
+On an NVIDIA Linux host (including RTX 5000), apply the GPU override. It builds
+`derms-r-train:cuda` from the CUDA Dockerfile and makes the orchestrator launch
+that image:
+
+```bash
+docker-compose -f docker-compose.yml -f docker-compose.gpu.yml --profile train build train
+docker-compose -f docker-compose.yml -f docker-compose.gpu.yml up -d orchestrator
+```
+
+Use only `docker-compose.yml` on the M4. Do not copy the ARM image to the RTX
+machine or the CUDA image to the Mac; build the appropriate image natively on
+each host. Training logs print progress every 10% of an epoch and record epoch
+duration in MLflow.
+
+The same page can be served on the host. It still starts training containers:
+
+```bash
+python -m orchestrator
+```
+
+Fixed mode starts one container with the canonical defaults (50 epochs, batch size 32, learning rate 1e-4, weight decay 0.01, five folds, ratios 0.10, 0.25, 0.50, 0.75, and 1.00). Range mode starts one container per hyperparameter combination, at most 12. K-folds and the ratio set stay on the canonical protocol. A recipient address is stored on the job; the page does not send mail.
+
 ## Experiment tracking (optional)
 
 `train.py` and `analyze.py` can mirror runs to Weights & Biases and/or MLflow. Local JSON/CSV results remain authoritative; a tracker outage only emits a warning and never fails a run.

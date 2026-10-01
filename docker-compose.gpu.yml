@@ -1,0 +1,12 @@
+# NVIDIA override. Use together with docker-compose.yml on the RTX host:
+# docker-compose -f docker-compose.yml -f docker-compose.gpu.yml --profile train build train
+# docker-compose -f docker-compose.yml -f docker-compose.gpu.yml up -d orchestrator
+services:
+  orchestrator:
+    environment:
+      DERMS_IMAGE: derms-r-train:cuda
+
+  train:
+    image: derms-r-train:cuda
+    build:
+      dockerfile: Dockerfile

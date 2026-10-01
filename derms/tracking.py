@@ -98,7 +98,13 @@ class Tracker:
             warnings.warn(f'{backend} mirror failed; local files remain authoritative: {error}')
 
     def epoch(self, row):
-        values = {'epoch': row['epoch'], 'train/loss': row['train_loss'], 'train/learning_rate': row['lr']}
+        values = {
+            'epoch': row['epoch'],
+            'train/loss': row['train_loss'],
+            'train/learning_rate': row['lr'],
+        }
+        if 'epoch_seconds' in row:
+            values['train/epoch_seconds'] = row['epoch_seconds']
         values.update({k.replace('val_', 'val/', 1): v for k, v in row.items() if k.startswith('val_')})
         if self.run is not None:
             self._safe('W&B', lambda: self.run.log(values))

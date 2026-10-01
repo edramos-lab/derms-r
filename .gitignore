@@ -6,3 +6,7 @@ results/
 wandb/
 *.pt
 .DS_Store
+.env
+mlflow-data/
+hf-cache/
+.claude/settings.local.json

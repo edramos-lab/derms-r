@@ -1,0 +1,1778 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>RIGAL-AI</title>
+  <script src="https://cdn.plot.ly/plotly-2.35.2.min.js" charset="utf-8"></script>
+  <style>
+    * { box-sizing: border-box; }
+    /* The `hidden` attribute must always win, even over elements whose class
+       sets `display: flex/grid` (author rules otherwise beat the UA default
+       [hidden]{display:none} regardless of specificity or source order). */
+    [hidden] { display: none !important; }
+    body {
+      margin: 0;
+      font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+      background: #0f1117;
+      color: #e4e4e9;
+      min-height: 100vh;
+    }
+    button, input, select { font-family: inherit; }
+    a { color: #5b9cf5; }
+    .app { display: flex; min-height: 100vh; }
+    .side {
+      width: 220px;
+      flex-shrink: 0;
+      background: #12141c;
+      border-right: 1px solid rgba(255,255,255,0.06);
+      padding: 24px 0;
+      display: flex;
+      flex-direction: column;
+    }
+    .brand { display: flex; align-items: center; gap: 10px; padding: 0 20px 24px; }
+    .mark {
+      width: 32px; height: 32px; border-radius: 8px;
+      background: linear-gradient(135deg, #2a78d6, #5b9cf5);
+      display: grid; place-items: center; color: #fff; font-weight: 700; font-size: 13px;
+    }
+    .brand span { font-size: 15px; font-weight: 700; color: #fff; letter-spacing: -0.3px; }
+    nav { display: flex; flex-direction: column; gap: 2px; padding: 0 8px; }
+    button.nav {
+      display: flex; align-items: center; gap: 10px;
+      width: 100%; text-align: left;
+      padding: 9px 12px; border-radius: 8px; border: none; background: transparent;
+      color: #8b8fa3; font-size: 13px; font-weight: 500; cursor: pointer;
+    }
+    button.nav.active { background: rgba(42,120,214,0.12); color: #5b9cf5; font-weight: 600; }
+    .stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+    .stat { background: #12141c; border-radius: 8px; padding: 14px; }
+    .stat b { display: block; margin-top: 6px; color: #fff; font-size: 18px; }
+    table { width: 100%; border-collapse: collapse; font-size: 12px; }
+    th, td { text-align: left; padding: 8px 6px; border-bottom: 1px solid rgba(255,255,255,0.06); vertical-align: top; }
+    th { color: #8b8fa3; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.4px; }
+    .view[hidden] { display: none; }
+    .main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+    header {
+      height: 56px; flex-shrink: 0;
+      border-bottom: 1px solid rgba(255,255,255,0.06);
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 0 28px; gap: 16px;
+    }
+    h1 { margin: 0; font-size: 16px; font-weight: 700; color: #fff; }
+    .actions { display: flex; gap: 10px; }
+    button {
+      border: none; border-radius: 7px; cursor: pointer; font-weight: 600;
+    }
+    .ghost {
+      background: transparent; color: #8b8fa3;
+      border: 1px solid rgba(255,255,255,0.1); padding: 7px 16px; font-size: 12px;
+    }
+    .primary { background: #2a78d6; color: #fff; padding: 7px 20px; font-size: 12px; }
+    .primary:disabled, .green:disabled { opacity: 0.45; cursor: not-allowed; }
+    .green { background: #1baf7a; color: #fff; padding: 8px 18px; font-size: 12px; }
+    .content {
+      padding: 20px 28px 40px;
+      display: flex; flex-direction: column; gap: 16px;
+    }
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+    .card {
+      background: #1a1d27;
+      border: 1px solid rgba(255,255,255,0.06);
+      border-radius: 12px;
+      padding: 20px;
+    }
+    .card h2 { margin: 0 0 4px; font-size: 13px; font-weight: 700; color: #fff; }
+    .muted { color: #8b8fa3; font-size: 11px; }
+    .row { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+    .pathbox {
+      display: flex; gap: 8px; margin: 12px 0;
+    }
+    .pathbox div, .field input, .field select, .range input, .range select {
+      background: #12141c;
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 7px;
+      color: #fff;
+    }
+    .path {
+      flex: 1; padding: 8px 12px; font-family: ui-monospace, SFMono-Regular, monospace;
+      font-size: 12px; color: #c7c9d1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .scan { background: #2a78d6; color: #fff; padding: 8px 16px; font-size: 11px; }
+    .choices { display: flex; flex-direction: column; gap: 6px; }
+    .models { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+    label.choice {
+      display: flex; align-items: center; gap: 10px;
+      padding: 10px 14px; background: #12141c;
+      border: 1px solid rgba(255,255,255,0.06);
+      border-radius: 8px; cursor: pointer; color: #e4e4e9; font-size: 13px; font-weight: 600;
+    }
+    .models label.choice { padding: 8px 10px; font-size: 12px; font-weight: 500; }
+    label.choice:has(input:checked) { border-color: rgba(42,120,214,0.4); color: #fff; }
+    label.choice input { accent-color: #2a78d6; width: 14px; height: 14px; }
+    .meta { margin-left: auto; text-align: right; font-size: 10px; color: #8b8fa3; font-weight: 500; font-family: ui-monospace, monospace; }
+    .sub { font-size: 11px; color: #8b8fa3; font-weight: 500; }
+    .linkish { color: #5b9cf5; font-size: 11px; font-weight: 600; background: none; border: none; cursor: pointer; padding: 0; }
+    .foot { margin-top: 8px; display: flex; justify-content: space-between; align-items: center; }
+    select, input[type="number"], input[type="text"], input[type="email"], input[type="password"] {
+      background: #12141c; border: 1px solid rgba(255,255,255,0.1); border-radius: 7px;
+      color: #fff; padding: 8px 12px; font-size: 13px; font-weight: 600;
+    }
+    .login-screen {
+      position: fixed; inset: 0; background: #0f1117; display: flex; align-items: center;
+      justify-content: center; z-index: 1000;
+    }
+    .login-card {
+      background: #1a1d27; border: 1px solid rgba(255,255,255,0.06); border-radius: 12px;
+      padding: 32px; width: 320px;
+    }
+    .login-card input { width: 100%; margin-top: 10px; box-sizing: border-box; }
+    .lightbox {
+      position: fixed; inset: 0; background: rgba(6,7,11,0.92); z-index: 2000;
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+    }
+    .lightbox-toolbar { display: flex; gap: 8px; margin-bottom: 14px; }
+    .lightbox-frame { overflow: auto; max-width: 92vw; max-height: 82vh; }
+    .lightbox-frame img { max-width: none; transition: transform 0.15s ease; transform-origin: center center; background: #fff; }
+    .plot-toolbar { display: flex; gap: 6px; margin-top: 8px; flex-wrap: wrap; }
+    .plot-toolbar button {
+      background: #12141c; border: 1px solid rgba(255,255,255,0.1); border-radius: 6px;
+      color: #c7c9d1; padding: 5px 10px; font-size: 11px; font-weight: 600; cursor: pointer;
+    }
+    .plot-toolbar button:hover { color: #fff; border-color: rgba(255,255,255,0.25); }
+    .plot-thumb { cursor: zoom-in; }
+    .xai-row { display: grid; grid-template-columns: 1fr 260px; gap: 16px; align-items: start; margin-top: 16px; }
+    .xai-content { min-width: 0; }
+    .xai-panel {
+      background: #12141c; border-left: 3px solid #5b9cf5; border-radius: 6px;
+      padding: 10px 12px; font-size: 11px; line-height: 1.5; color: #c7c9d1;
+    }
+    .xai-panel .xai-title {
+      font-size: 10px; font-weight: 700; color: #5b9cf5; text-transform: uppercase;
+      letter-spacing: 0.4px; margin-bottom: 6px;
+    }
+    @media (max-width: 980px) { .xai-row { grid-template-columns: 1fr; } }
+    .deploy { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; justify-content: flex-end; }
+    .k { font-size: 11px; font-weight: 600; color: #8b8fa3; text-transform: uppercase; letter-spacing: 0.6px; }
+    .modes { display: flex; gap: 6px; align-items: center; }
+    .pill {
+      padding: 3px 10px; border-radius: 5px; font-size: 11px; font-weight: 600;
+      background: rgba(139,143,163,0.12); color: #8b8fa3; border: none; cursor: pointer;
+    }
+    .pill.on { background: rgba(42,120,214,0.15); color: #5b9cf5; }
+    .ranges { display: flex; flex-direction: column; gap: 8px; margin-bottom: 12px; }
+    .range {
+      display: grid; grid-template-columns: 120px 1fr 24px 1fr 88px; gap: 8px; align-items: center;
+    }
+    .range input, .range select { width: 100%; text-align: center; font-weight: 600; }
+    .fixedgrid, .twocol { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; }
+    .twocol { grid-template-columns: 1fr 1fr; }
+    .field label { display: block; margin-bottom: 6px; }
+    .field input, .field select { width: 100%; }
+    .note {
+      margin-top: 10px; padding: 10px 14px; border-radius: 8px;
+      background: rgba(42,120,214,0.08); border: 1px solid rgba(42,120,214,0.15);
+      font-size: 11px; color: #8b8fa3;
+    }
+    .warn {
+      background: rgba(235,104,52,0.06); border: 1px solid rgba(235,104,52,0.18); color: #e4e4e9;
+    }
+    .ratios { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 12px; }
+    .ratios label {
+      display: flex; align-items: center; gap: 6px; cursor: pointer;
+      padding: 8px 14px; background: #12141c; border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 7px; font-size: 13px; font-weight: 600; color: #e4e4e9;
+    }
+    .ratios label:has(input:checked) { border-color: rgba(42,120,214,0.6); color: #fff; background: rgba(42,120,214,0.08); }
+    .ratios input { accent-color: #2a78d6; width: 14px; height: 14px; }
+    .banner {
+      padding: 10px 14px; border-radius: 8px; font-size: 12px;
+      background: #12141c; border: 1px solid rgba(255,255,255,0.08);
+    }
+    .banner.bad { border-color: rgba(235,104,52,0.45); color: #ffb4a2; }
+    .banner.ok { border-color: rgba(27,175,122,0.45); color: #b6f0d6; }
+    .jobs { display: flex; flex-direction: column; gap: 8px; }
+    .job {
+      background: #12141c; border: 1px solid rgba(255,255,255,0.06); border-radius: 8px; padding: 12px 14px;
+    }
+    .job strong { color: #fff; font-size: 13px; }
+    pre {
+      margin: 8px 0 0; white-space: pre-wrap; word-break: break-word;
+      font-size: 11px; color: #c7c9d1; font-family: ui-monospace, SFMono-Regular, monospace;
+      max-height: 240px; overflow: auto;
+    }
+    .inline { display: flex; gap: 8px; align-items: center; }
+    .checkline { display: flex; align-items: center; gap: 6px; font-size: 12px; color: #e4e4e9; }
+    @media (max-width: 980px) {
+      .app { flex-direction: column; }
+      .side { width: 100%; }
+      .grid, .fixedgrid, .twocol, .range, .stats { grid-template-columns: 1fr; }
+      .models { grid-template-columns: 1fr; }
+    }
+    @media print {
+      /* Report mode: whatever's on screen for the current dataset, minus
+         interactive chrome, on a light background so it's actually legible
+         on paper (the app UI is light-text-on-dark throughout). */
+      .side, header .actions, .plot-toolbar, .scan, #lightbox, #login-screen,
+      .nav, button:not(.keep-print) { display: none !important; }
+      html, body { background: #fff !important; }
+      .app { display: block !important; }
+      .main { padding: 0 !important; }
+      header h1 { color: #111 !important; }
+      .card {
+        background: #fff !important; border: 1px solid #ccc !important;
+        color: #111 !important; break-inside: avoid; page-break-inside: avoid;
+        margin-bottom: 12px !important;
+      }
+      .muted { color: #555 !important; }
+      h2, h1, strong, b { color: #111 !important; }
+      table, th, td { color: #111 !important; border-color: #ccc !important; }
+      img { max-width: 100% !important; }
+      .xai-panel { border-left-color: #999 !important; color: #333 !important; }
+      /* Keep each metrics/plot block (and its AI panel) on one page — without
+         this, a tall block like the t-SNE 3D chart can get sliced exactly at
+         the page boundary since the whole EDA result was one giant .card with
+         no break hints on its individual sections. */
+      .xai-row, .plot-block { break-inside: avoid; page-break-inside: avoid; }
+      .card { break-inside: auto; page-break-inside: auto; }
+    }
+  </style>
+</head>
+<body>
+  <div id="login-screen" class="login-screen" hidden>
+    <div class="login-card">
+      <div class="brand" style="margin-bottom:20px"><div class="mark">R</div><span>RIGAL-AI</span></div>
+      <div id="login-error" class="muted" style="color:#e05b5b;margin-bottom:6px" hidden></div>
+      <input id="login-username" type="text" placeholder="Username" autocomplete="username" />
+      <input id="login-password" type="password" placeholder="Password" autocomplete="current-password" />
+      <button id="login-submit" class="primary" type="button" style="width:100%;margin-top:14px">Log in</button>
+    </div>
+  </div>
+  <div id="change-password-screen" class="login-screen" hidden>
+    <div class="login-card">
+      <div class="brand" style="margin-bottom:12px"><div class="mark">R</div><span>RIGAL-AI</span></div>
+      <div class="muted" style="margin-bottom:14px">This account was just created and needs a new password before you can continue.</div>
+      <div id="change-password-error" class="muted" style="color:#e05b5b;margin-bottom:6px" hidden></div>
+      <input id="cp-current" type="password" placeholder="Current password" autocomplete="current-password" />
+      <input id="cp-new" type="password" placeholder="New password (min 8 chars)" autocomplete="new-password" />
+      <input id="cp-confirm" type="password" placeholder="Confirm new password" autocomplete="new-password" />
+      <button id="cp-submit" class="primary" type="button" style="width:100%;margin-top:14px">Set new password</button>
+      <button id="cp-logout" class="linkish" type="button" style="width:100%;margin-top:10px">Log out instead</button>
+    </div>
+  </div>
+  <div id="lightbox" class="lightbox" hidden>
+    <div class="lightbox-toolbar">
+      <button id="lightbox-zoom-out" class="ghost" type="button">Zoom −</button>
+      <button id="lightbox-zoom-reset" class="ghost" type="button">Reset</button>
+      <button id="lightbox-zoom-in" class="ghost" type="button">Zoom +</button>
+      <button id="lightbox-close" class="ghost" type="button">Close ✕</button>
+    </div>
+    <div class="lightbox-frame">
+      <img id="lightbox-img" src="" alt="" />
+    </div>
+  </div>
+  <div class="app" id="app-shell" hidden>
+    <aside class="side">
+      <div class="brand"><div class="mark">R</div><span>RIGAL-AI</span></div>
+      <nav>
+        <button class="nav active" type="button" data-view="dashboard">Dashboard</button>
+        <button class="nav" type="button" data-view="configuration">Configuration</button>
+        <button class="nav" type="button" data-view="eda">Exploratory Dataset Analysis</button>
+        <button class="nav" type="button" data-view="administration">Audit trail</button>
+        <button class="nav" type="button" data-view="users" id="nav-users" hidden>User Management</button>
+      </nav>
+      <a class="ghost" id="mlflow-link" href="#" target="_blank" rel="noopener"
+         style="margin-top:16px;text-align:center;text-decoration:none;display:block" hidden>Open MLflow ↗</a>
+      <div style="margin-top:24px;padding-top:12px;border-top:1px solid rgba(255,255,255,0.06)">
+        <div class="muted" id="whoami"></div>
+        <button class="linkish" id="logout-btn" type="button" style="margin-top:6px">Log out</button>
+      </div>
+    </aside>
+    <div class="main">
+      <header>
+        <h1 id="title">Dashboard</h1>
+        <div class="actions" id="config-actions" hidden>
+          <button class="ghost" id="reset" type="button">Reset Defaults</button>
+          <button class="primary" id="start" type="button">Start Training</button>
+        </div>
+        <div class="actions" id="eda-actions" hidden>
+          <button class="primary" id="download-report" type="button">Download Report</button>
+        </div>
+      </header>
+      <div id="view-dashboard" class="content view">
+        <div id="dash-note" class="banner" hidden></div>
+        <div class="stats" id="dash-stats"></div>
+        <section class="card">
+          <h2>System</h2>
+          <div class="muted">CPU/RAM/disk are live from the Docker VM (colima) this container runs in — not raw macOS host stats.</div>
+          <div id="system-body" style="margin-top:12px"></div>
+        </section>
+        <section class="card">
+          <div class="row">
+            <div>
+              <h2>Training jobs</h2>
+              <div class="muted">Containers started from Configuration. Metrics go to the separate MLflow container.</div>
+            </div>
+            <button class="ghost" id="dash-config" type="button">Open configuration</button>
+          </div>
+          <div id="dash-jobs" style="margin-top:12px"></div>
+        </section>
+        <section class="card">
+          <h2>Best DERMS-R scores</h2>
+          <div class="muted">Read from summary.json files under the results directory.</div>
+          <div id="dash-scores" style="margin-top:12px"></div>
+        </section>
+      </div>
+
+      <div id="view-configuration" class="content view" hidden>
+        <div id="banner" class="banner">Checking Docker and MLflow…</div>
+
+        <div class="grid">
+          <section class="card">
+            <div class="row">
+              <h2>Dataset</h2>
+              <span class="muted" id="scan-meta"></span>
+            </div>
+            <div class="pathbox">
+              <div class="path" id="data-path">datasets/</div>
+              <button class="scan" id="scan" type="button">Scan</button>
+            </div>
+            <div class="choices" id="datasets"></div>
+            <div class="foot">
+              <span class="muted" id="data-summary"></span>
+              <button class="linkish" id="data-all" type="button">Select All</button>
+            </div>
+          </section>
+
+          <section class="card">
+            <div class="row">
+              <h2>Architectures</h2>
+              <button class="linkish" id="model-all" type="button">Select All</button>
+            </div>
+            <div class="models" id="models" style="margin-top:14px"></div>
+          </section>
+        </div>
+
+        <section class="card">
+          <div class="row">
+            <div>
+              <h2>Deployment Mode</h2>
+              <div class="muted">Training runs in Docker. MLflow stays in its own container.</div>
+            </div>
+            <div class="deploy">
+              <select id="deployment">
+                <option value="single" selected>Single Machine · 1 GPU</option>
+                <option value="cluster">Cluster · Multi-Node</option>
+              </select>
+              <span class="k">Device</span>
+              <select id="device">
+                <option value="cuda:0">cuda:0</option>
+                <option value="cpu">cpu</option>
+              </select>
+            </div>
+          </div>
+          <div class="twocol" style="margin-top:16px">
+            <div class="field">
+              <label class="k">MLflow experiment</label>
+              <input id="experiment" type="text" value="derms-r-benchmark">
+            </div>
+            <div class="field" style="display:flex;align-items:flex-end">
+              <label class="checkline"><input id="artifacts" type="checkbox"> Upload checkpoints to MLflow</label>
+            </div>
+          </div>
+          <div class="note" id="mlflow-note">Looking for a running MLflow container.</div>
+        </section>
+
+        <section class="card">
+          <div class="row" style="margin-bottom:16px">
+            <h2>Training Hyperparameters</h2>
+            <div class="modes">
+              <span class="muted" style="font-weight:600">Mode:</span>
+              <button class="pill on" id="mode-fixed" type="button">Fixed</button>
+              <button class="pill" id="mode-range" type="button">Range</button>
+            </div>
+          </div>
+          <div id="fixed-fields" class="fixedgrid">
+            <div class="field"><label class="k">Batch Size</label><input id="batch" type="number" min="2" value="32"></div>
+            <div class="field"><label class="k">Epochs</label><input id="epochs" type="number" min="1" value="50"></div>
+            <div class="field"><label class="k">Learning Rate</label><input id="lr" type="text" value="1e-4"></div>
+            <div class="field"><label class="k">Weight Decay</label><input id="wd" type="text" value="0.01"></div>
+          </div>
+          <div id="range-fields" class="ranges" hidden>
+            <div class="range"><span>Batch Size</span><input id="batch-min" type="number" value="16"><span>→</span><input id="batch-max" type="number" value="64"><input id="batch-step" type="number" value="16" title="step"></div>
+            <div class="range"><span>Epochs</span><input id="epoch-min" type="number" value="25"><span>→</span><input id="epoch-max" type="number" value="100"><input id="epoch-step" type="number" value="25" title="step"></div>
+            <div class="range"><span>Learning Rate</span><input id="lr-min" type="text" value="1e-5"><span>→</span><input id="lr-max" type="text" value="1e-3"><select id="lr-scale"><option value="log">log</option><option value="linear">linear</option></select></div>
+            <div class="range"><span>Weight Decay</span><input id="wd-min" type="text" value="0.001"><span>→</span><input id="wd-max" type="text" value="0.05"><select id="wd-scale"><option value="log">log</option><option value="linear">linear</option></select></div>
+          </div>
+          <div class="fixedgrid" style="margin-top:16px">
+            <div class="field"><label class="k">K-Folds</label><input type="number" value="5" readonly></div>
+            <div class="field"><label class="k">Seed</label><input id="seed" type="number" value="42"></div>
+            <div class="field"><label class="k">Holdout</label><input id="holdout" type="text" value="0.20"></div>
+            <div class="field"><label class="k">Search Strategy</label><input type="text" value="Grid, one container each" readonly></div>
+          </div>
+          <div class="note" id="combo-note"></div>
+        </section>
+
+        <section class="card">
+          <div class="row">
+            <h2>Dataset Ratios</h2>
+            <span>
+              <button class="linkish" id="ratio-all" type="button">Select All</button>
+              <button class="linkish" id="ratio-none" type="button">Select None</button>
+            </span>
+          </div>
+          <div class="ratios">
+            <label><input type="checkbox" name="ratio-highlight" value="0.10" checked><span>10%</span></label>
+            <label><input type="checkbox" name="ratio-highlight" value="0.25" checked><span>25%</span></label>
+            <label><input type="checkbox" name="ratio-highlight" value="0.50" checked><span>50%</span></label>
+            <label><input type="checkbox" name="ratio-highlight" value="0.75" checked><span>75%</span></label>
+            <label><input type="checkbox" name="ratio-highlight" value="1.00" checked><span>100%</span></label>
+          </div>
+          <div class="muted" style="margin-top:8px">Canonical DERMS-R ratios. Every architecture is scored at all five regardless of which are highlighted here — this selector is for visual reference only.</div>
+        </section>
+
+        <section class="card">
+          <div class="row">
+            <div>
+              <h2>Email Notification on Completion</h2>
+              <div class="muted">The address is stored on the job. This orchestrator does not send mail.</div>
+            </div>
+          </div>
+          <div class="field" style="margin-top:14px;max-width:420px">
+            <label class="k">Recipient Email</label>
+            <input id="email" type="email" placeholder="name@example.com">
+          </div>
+        </section>
+
+        <section class="card">
+          <div class="row">
+            <div>
+              <h2>Dataset Preparation</h2>
+              <div class="muted">Download and prepare stratified folds in a container before training.</div>
+            </div>
+            <div class="inline">
+              <label class="checkline"><input id="augmentation" type="checkbox" checked> Augmentation</label>
+              <label class="checkline"><input id="pretrained" type="checkbox" checked> Pretrained</label>
+              <button class="green" id="prepare" type="button">Prepare Dataset</button>
+            </div>
+          </div>
+        </section>
+
+        <section class="card">
+          <div class="row">
+            <h2>Jobs</h2>
+            <span class="muted" id="job-meta">No jobs yet</span>
+          </div>
+          <div class="jobs" id="jobs" style="margin-top:12px"></div>
+        </section>
+      </div>
+
+      <div id="view-eda" class="content view" hidden>
+        <section class="card">
+          <div class="row">
+            <div>
+              <h2>Dataset survey</h2>
+              <div class="muted" id="eda-path"></div>
+            </div>
+            <button class="scan" id="eda-scan" type="button">Scan</button>
+          </div>
+          <div id="eda-body" style="margin-top:14px"></div>
+        </section>
+      </div>
+
+      <div id="view-administration" class="content view" hidden>
+        <section class="card">
+          <h2>Access</h2>
+          <div class="muted">This console runs on one machine. Accounts and roles are managed in User Management (Sys Admin only).</div>
+          <div id="admin-access" style="margin-top:14px"></div>
+        </section>
+        <section class="card">
+          <h2>Audit trail</h2>
+          <div class="muted">Each row is a container start or prepare action from this page.</div>
+          <div id="admin-audit" style="margin-top:14px"></div>
+        </section>
+      </div>
+
+      <div id="view-users" class="content view" hidden>
+        <section class="card">
+          <h2>Create user</h2>
+          <div class="muted">Sys Admin has full access, including this tab. ML User cannot access User Management (enforced server-side too).</div>
+          <div id="user-create-error" class="muted" style="color:#e05b5b;margin-top:8px" hidden></div>
+          <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap;align-items:center">
+            <input id="new-username" type="text" placeholder="Username" />
+            <input id="new-password" type="password" placeholder="Password (min 8 chars)" />
+            <select id="new-role">
+              <option value="ml_user">ML User</option>
+              <option value="sysadmin">Sys Admin</option>
+            </select>
+            <button id="user-create" class="primary" type="button">Create</button>
+          </div>
+        </section>
+        <section class="card">
+          <h2>Users</h2>
+          <div id="users-body" style="margin-top:12px"></div>
+        </section>
+      </div>
+    </div>
+  </div>
+  <script>
+    const state = { mode: "fixed", view: "dashboard", status: null, selectedJob: null, timer: null, jobs: [], user: null };
+    const TITLES = {
+      dashboard: "Dashboard",
+      configuration: "Training Configuration",
+      eda: "Exploratory Dataset Analysis",
+      administration: "Audit trail",
+      users: "User Management",
+    };
+
+    function checked(name) {
+      return [...document.querySelectorAll(`input[name="${name}"]:checked`)].map(el => el.value);
+    }
+
+    function payload(action) {
+      const body = {
+        action,
+        datasets: checked("dataset"),
+        models: checked("model"),
+        deployment: document.getElementById("deployment").value,
+        device: document.getElementById("device").value,
+        mode: action === "prepare" ? "fixed" : state.mode,
+        seed: Number(document.getElementById("seed").value),
+        holdout: Number(document.getElementById("holdout").value),
+        folds: 5,
+        ratios: [0.10, 0.25, 0.50, 0.75, 1.00],
+        augmentation: document.getElementById("augmentation").checked,
+        pretrained: document.getElementById("pretrained").checked,
+        mlflow_experiment: document.getElementById("experiment").value.trim(),
+        mlflow_artifacts: document.getElementById("artifacts").checked,
+        notify_email: document.getElementById("email").value.trim(),
+      };
+      if (body.mode === "fixed") {
+        body.batch_size = Number(document.getElementById("batch").value);
+        body.epochs = Number(document.getElementById("epochs").value);
+        body.lr = Number(document.getElementById("lr").value);
+        body.weight_decay = Number(document.getElementById("wd").value);
+      } else {
+        body.ranges = {
+          batch_size: { min: Number(document.getElementById("batch-min").value), max: Number(document.getElementById("batch-max").value), step: Number(document.getElementById("batch-step").value), scale: "linear" },
+          epochs: { min: Number(document.getElementById("epoch-min").value), max: Number(document.getElementById("epoch-max").value), step: Number(document.getElementById("epoch-step").value), scale: "linear" },
+          lr: { min: Number(document.getElementById("lr-min").value), max: Number(document.getElementById("lr-max").value), scale: document.getElementById("lr-scale").value },
+          weight_decay: { min: Number(document.getElementById("wd-min").value), max: Number(document.getElementById("wd-max").value), scale: document.getElementById("wd-scale").value },
+        };
+      }
+      return body;
+    }
+
+    function banner(text, kind) {
+      const el = document.getElementById("banner");
+      el.textContent = text;
+      el.className = "banner" + (kind ? " " + kind : "");
+    }
+
+    function renderChoices() {
+      const status = state.status;
+      const dataRoot = document.getElementById("datasets");
+      const previousData = new Set(checked("dataset"));
+      const first = !dataRoot.childElementCount;
+      dataRoot.innerHTML = "";
+      for (const row of status.datasets) {
+        const label = document.createElement("label");
+        label.className = "choice";
+        const input = document.createElement("input");
+        input.type = "checkbox";
+        input.name = "dataset";
+        input.value = row.id;
+        input.checked = first ? row.default : previousData.has(row.id);
+        const text = document.createElement("div");
+        const title = document.createElement("div");
+        title.textContent = row.id;
+        const sub = document.createElement("div");
+        sub.className = "sub";
+        const classes = row.classes ? `${row.classes} classes` : "local split";
+        sub.textContent = `${classes} · ${row.present ? "on disk" : "not downloaded"}`;
+        text.append(title, sub);
+        const meta = document.createElement("div");
+        meta.className = "meta";
+        meta.textContent = row.container_path;
+        label.append(input, text, meta);
+        dataRoot.append(label);
+      }
+      const selected = checked("dataset").length;
+      const present = status.datasets.filter(row => row.present).length;
+      document.getElementById("data-summary").textContent =
+        `${status.datasets.length} datasets · ${present} on disk · ${selected} selected`;
+      document.getElementById("data-path").textContent = status.host_datasets || status.datasets_path;
+      document.getElementById("scan-meta").textContent = status.docker ? "Docker is up" : "Docker unavailable";
+
+      const models = document.getElementById("models");
+      const previousModels = new Set(checked("model"));
+      const firstModels = !models.childElementCount;
+      models.innerHTML = "";
+      for (const row of status.models) {
+        const label = document.createElement("label");
+        label.className = "choice";
+        const input = document.createElement("input");
+        input.type = "checkbox";
+        input.name = "model";
+        input.value = row.id;
+        input.checked = firstModels ? row.default : previousModels.has(row.id);
+        label.append(input, document.createTextNode(row.label));
+        models.append(label);
+      }
+      dataRoot.onchange = () => renderSummaryOnly();
+      models.onchange = () => renderSummaryOnly();
+    }
+
+    function renderSummaryOnly() {
+      const selected = checked("dataset").length;
+      const present = state.status.datasets.filter(row => row.present).length;
+      document.getElementById("data-summary").textContent =
+        `${state.status.datasets.length} datasets · ${present} on disk · ${selected} selected`;
+      updateComboNote();
+    }
+
+    function updateComboNote() {
+      const models = Math.max(checked("model").length, 0);
+      const datasets = Math.max(checked("dataset").length, 0);
+      const fits = `${models} architectures × 5 folds × 5 ratios`;
+      const note = document.getElementById("combo-note");
+      if (state.mode === "fixed") {
+        note.className = "note";
+        note.textContent = `Fixed mode starts 1 container per click. Each container runs ${fits} for ${datasets || "no"} dataset${datasets === 1 ? "" : "s"}.`;
+        return;
+      }
+      note.className = "note warn";
+      note.textContent = `Range mode starts one container per hyperparameter combination (maximum 12). Each container runs ${fits}.`;
+    }
+
+    function renderMLflow() {
+      const mlflow = state.status.mlflow || {};
+      const note = document.getElementById("mlflow-note");
+      if (!state.status.docker) {
+        banner(state.status.docker_error || "Docker is not available.", "bad");
+        note.textContent = "Start Docker, then scan again.";
+        return;
+      }
+      if (!state.status.image_present) {
+        banner(`Training image ${state.status.image} is not built. Run: docker compose --profile train build`, "bad");
+      } else if (!state.status.gpu) {
+        document.getElementById("device").value = "cpu";
+        banner("Docker is ready. No NVIDIA runtime was found, so Device is set to cpu.", "ok");
+      } else if (!document.getElementById("banner").classList.contains("bad")) {
+        banner("Docker is ready. Training containers can use the GPU.", "ok");
+      }
+      if (mlflow.ok) {
+        const link = mlflow.host_url ? ` MLflow UI: ${mlflow.host_url}.` : "";
+        const attach = mlflow.connect
+          ? ` MLflow is not on a user-defined network, so the orchestrator will attach ${mlflow.container} to ${mlflow.network}.`
+          : ` Training joins network ${mlflow.network}.`;
+        note.textContent = `Metrics go to ${mlflow.tracking_uri}.${attach}${link}`;
+      } else {
+        note.textContent = mlflow.error || "No MLflow container found.";
+        if (state.status.image_present) banner(note.textContent, "bad");
+      }
+    }
+
+    function updateMlflowLink() {
+      const link = document.getElementById("mlflow-link");
+      const mlflow = state.status && state.status.mlflow;
+      if (mlflow && mlflow.ok && mlflow.host_url) {
+        link.href = mlflow.host_url;
+        link.hidden = false;
+      } else {
+        link.hidden = true;
+      }
+    }
+
+    async function refreshStatus() {
+      const response = await fetch("/api/status");
+      state.status = await response.json();
+      renderChoices();
+      renderMLflow();
+      updateMlflowLink();
+      updateComboNote();
+    }
+
+    function setMode(mode) {
+      state.mode = mode;
+      document.getElementById("mode-fixed").classList.toggle("on", mode === "fixed");
+      document.getElementById("mode-range").classList.toggle("on", mode === "range");
+      document.getElementById("fixed-fields").hidden = mode !== "fixed";
+      document.getElementById("range-fields").hidden = mode !== "range";
+      updateComboNote();
+    }
+
+    async function submit(action) {
+      banner(action === "prepare" ? "Starting dataset preparation…" : "Starting training…");
+      const response = await fetch("/api/jobs", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload(action)),
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        banner(data.error || "Request failed.", "bad");
+        return;
+      }
+      const failed = (data.jobs || []).find(job => job.state === "failed");
+      if (failed) banner(failed.error || "The container failed to start.", "bad");
+      else {
+        const uri = data.mlflow && data.mlflow.tracking_uri ? ` Logging to ${data.mlflow.tracking_uri}.` : "";
+        banner(`Started ${data.jobs.length} container${data.jobs.length === 1 ? "" : "s"}.${uri}`, "ok");
+      }
+      await refreshJobs();
+    }
+
+    function renderJobs(jobs) {
+      const root = document.getElementById("jobs");
+      document.getElementById("job-meta").textContent = jobs.length ? `${jobs.length} recorded` : "No jobs yet";
+      if (!jobs.length) {
+        root.innerHTML = "";
+        return;
+      }
+      root.innerHTML = "";
+      for (const job of jobs) {
+        const card = document.createElement("article");
+        card.className = "job";
+        const title = document.createElement("div");
+        title.className = "row";
+        const left = document.createElement("strong");
+        left.textContent = `${job.action} · ${job.label} · ${job.state}`;
+        title.append(left);
+        if (job.state === "running" || job.state === "created") {
+          const stop = document.createElement("button");
+          stop.className = "ghost";
+          stop.type = "button";
+          stop.textContent = "Stop";
+          stop.onclick = async () => {
+            await fetch(`/api/jobs/${job.id}/stop`, { method: "POST" });
+            await refreshJobs();
+          };
+          title.append(stop);
+        }
+        const detail = document.createElement("div");
+        detail.className = "muted";
+        detail.style.marginTop = "6px";
+        detail.textContent = `${(job.datasets || []).join(", ")} · ${(job.models || []).join(", ")} · ${job.device} · epochs ${job.epochs} · batch ${job.batch_size}`;
+        const cmd = document.createElement("pre");
+        cmd.textContent = job.command || "";
+        card.append(title, detail, cmd);
+        if (job.tracking_uri) {
+          const track = document.createElement("div");
+          track.className = "muted";
+          track.textContent = job.tracking_uri;
+          card.append(track);
+        }
+        if (job.error) {
+          const err = document.createElement("div");
+          err.className = "muted";
+          err.style.color = "#ffb4a2";
+          err.textContent = job.error;
+          card.append(err);
+        }
+        const logs = document.createElement("pre");
+        logs.id = `logs-${job.id}`;
+        logs.hidden = true;
+        const toggle = document.createElement("button");
+        toggle.className = "linkish";
+        toggle.type = "button";
+        toggle.textContent = "Logs";
+        toggle.onclick = async () => {
+          state.selectedJob = job.id;
+          logs.hidden = false;
+          const response = await fetch(`/api/jobs/${job.id}/logs`);
+          const data = await response.json();
+          logs.textContent = data.logs || "(no output yet)";
+        };
+        card.append(toggle, logs);
+        root.append(card);
+      }
+    }
+
+    function showView(name) {
+      if (!TITLES[name]) name = "dashboard";
+      if (name === "users" && (!state.user || state.user.role !== "sysadmin")) name = "dashboard";
+      state.view = name;
+      for (const view of Object.keys(TITLES)) {
+        document.getElementById("view-" + view).hidden = view !== name;
+        document.querySelector(`[data-view="${view}"]`).classList.toggle("active", view === name);
+      }
+      document.getElementById("title").textContent = TITLES[name];
+      document.getElementById("config-actions").hidden = name !== "configuration";
+      document.getElementById("eda-actions").hidden = name !== "eda";
+      document.title = TITLES[name];
+      if (location.hash !== "#" + name) history.replaceState(null, "", "#" + name);
+      if (name === "dashboard") renderDashboard();
+      if (name === "eda") loadEda();
+      if (name === "administration") renderAdmin();
+      if (name === "users") renderUsers();
+    }
+
+    async function renderUsers() {
+      const root = document.getElementById("users-body");
+      root.innerHTML = "";
+      const loading = document.createElement("div");
+      loading.className = "muted";
+      loading.textContent = "Loading…";
+      root.append(loading);
+      const response = await fetch("/api/users");
+      if (response.status === 403) {
+        root.innerHTML = "";
+        const msg = document.createElement("div");
+        msg.className = "muted";
+        msg.textContent = "Sys Admin role required.";
+        root.append(msg);
+        return;
+      }
+      const data = await response.json();
+      root.innerHTML = "";
+      const table = document.createElement("table");
+      table.innerHTML = "<thead><tr><th>Username</th><th>Role</th><th>Password</th><th>Created</th><th></th></tr></thead>";
+      const body = document.createElement("tbody");
+      for (const u of data.users || []) {
+        const row = document.createElement("tr");
+        const uname = document.createElement("td");
+        uname.textContent = u.username;
+        const role = document.createElement("td");
+        role.textContent = u.role === "sysadmin" ? "Sys Admin" : "ML User";
+        const pwStatus = document.createElement("td");
+        pwStatus.className = "muted";
+        pwStatus.textContent = u.must_change_password ? "Pending first-login change" : "Set";
+        const created = document.createElement("td");
+        created.textContent = u.created_at || "";
+        const actions = document.createElement("td");
+        if (state.user && u.username !== state.user.username) {
+          const del = document.createElement("button");
+          del.className = "linkish";
+          del.type = "button";
+          del.textContent = "Delete";
+          del.onclick = async () => {
+            if (!confirm(`Delete user "${u.username}"?`)) return;
+            const r = await fetch(`/api/users/${encodeURIComponent(u.username)}`, { method: "DELETE" });
+            const d = await r.json();
+            if (!r.ok) { alert(d.error || "Delete failed."); return; }
+            renderUsers();
+          };
+          actions.append(del);
+        }
+        row.append(uname, role, pwStatus, created, actions);
+        body.append(row);
+      }
+      table.append(body);
+      root.append(table);
+    }
+
+    function stat(label, value) {
+      const card = document.createElement("div");
+      card.className = "stat";
+      const k = document.createElement("div");
+      k.className = "muted";
+      k.textContent = label;
+      const v = document.createElement("b");
+      v.textContent = value;
+      card.append(k, v);
+      return card;
+    }
+
+    function renderDashboard() {
+      const root = document.getElementById("dash-stats");
+      const status = state.status;
+      root.innerHTML = "";
+      if (!status) return;
+      const mlflow = status.mlflow && status.mlflow.ok ? status.mlflow.container : "not found";
+      const note = document.getElementById("dash-note");
+      if (!status.docker && status.docker_error) {
+        note.hidden = false;
+        note.className = "banner bad";
+        note.textContent = status.docker_error;
+      } else if (status.mlflow && !status.mlflow.ok && status.mlflow.error) {
+        note.hidden = false;
+        note.className = "banner bad";
+        note.textContent = status.mlflow.error;
+      } else {
+        note.hidden = true;
+      }
+      const onDisk = status.datasets.filter(row => row.present).length;
+      const running = state.jobs.filter(job => job.state === "running").length;
+      root.append(
+        stat("Docker", status.docker ? "up" : "down"),
+        stat("MLflow", mlflow),
+        stat("Running jobs", String(running)),
+        stat("Datasets on disk", `${onDisk}/${status.datasets.length}`),
+      );
+      const jobs = document.getElementById("dash-jobs");
+      jobs.innerHTML = "";
+      if (!state.jobs.length) {
+        const empty = document.createElement("div");
+        empty.className = "muted";
+        empty.textContent = "No training containers yet.";
+        jobs.append(empty);
+      } else {
+        const table = document.createElement("table");
+        table.innerHTML = "<thead><tr><th>When</th><th>Action</th><th>State</th><th>Datasets</th><th>Device</th></tr></thead>";
+        const body = document.createElement("tbody");
+        for (const job of state.jobs.slice(0, 8)) {
+          const row = document.createElement("tr");
+          for (const value of [job.created_at || "", job.action, job.state, (job.datasets || []).join(", "), job.device]) {
+            const cell = document.createElement("td");
+            cell.textContent = value;
+            row.append(cell);
+          }
+          body.append(row);
+        }
+        table.append(body);
+        jobs.append(table);
+      }
+      if (!state.scores) {
+        fetch("/api/scores").then(response => response.json()).then(data => {
+          state.scores = data.scores || [];
+          renderScores();
+        }).catch(() => renderScores());
+      } else {
+        renderScores();
+      }
+      loadSystem();
+    }
+
+    function meterRow(label, percent, detail) {
+      const row = document.createElement("div");
+      row.style.cssText = "margin-top:8px";
+      const head = document.createElement("div");
+      head.style.cssText = "display:flex;justify-content:space-between;font-size:11px;color:#c7c9d1";
+      head.innerHTML = `<span>${label}</span><span>${detail}</span>`;
+      const track = document.createElement("div");
+      track.style.cssText = "background:#12141c;border-radius:4px;height:8px;overflow:hidden;margin-top:4px";
+      const bar = document.createElement("div");
+      const color = percent >= 85 ? "#e05b5b" : percent >= 70 ? "#e0a72b" : "#2a78d6";
+      bar.style.cssText = `height:100%;width:${Math.min(percent, 100)}%;background:${color}`;
+      track.append(bar);
+      row.append(head, track);
+      return row;
+    }
+
+    function loadSystem() {
+      fetch("/api/system").then(r => r.json()).then(renderSystem).catch(() => {});
+    }
+
+    function renderSystem(data) {
+      const root = document.getElementById("system-body");
+      if (!root) return;
+      root.innerHTML = "";
+      const grid = document.createElement("div");
+      grid.style.cssText = "display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:16px";
+
+      const perf = document.createElement("div");
+      if (data.cpu && data.cpu.percent != null) {
+        perf.append(meterRow("CPU", data.cpu.percent, `${data.cpu.percent}% of ${data.cpu.cores} cores`));
+      }
+      if (data.memory) {
+        perf.append(meterRow("RAM", data.memory.percent, `${data.memory.used_gb} / ${data.memory.total_gb} GB`));
+      }
+      if (data.disk) {
+        perf.append(meterRow("Disk", data.disk.percent, `${data.disk.used_gb} / ${data.disk.total_gb} GB`));
+      }
+      grid.append(perf);
+
+      const meta = document.createElement("div");
+      meta.style.cssText = "font-size:11px;color:#c7c9d1";
+      const loadTxt = data.load_average ? `${data.load_average["1m"]} / ${data.load_average["5m"]} / ${data.load_average["15m"]}` : "n/a";
+      const uptimeTxt = data.uptime_seconds != null ? `${(data.uptime_seconds / 3600).toFixed(1)}h` : "n/a";
+      const gpuTxt = data.gpu && data.gpu.available ? "Available" : "Not detected";
+      meta.innerHTML = [
+        ["Load avg (1/5/15m)", loadTxt],
+        ["VM uptime", uptimeTxt],
+        ["GPU", gpuTxt],
+        ["Temperature", "Unavailable (no host sensor access)"],
+        ["NVRAM", "Unavailable (no host sensor access)"],
+      ].map(([k, v]) => `<div style="display:flex;justify-content:space-between;margin-top:4px"><span style="color:#8b8fa3">${k}</span><span>${v}</span></div>`).join("");
+      grid.append(meta);
+      root.append(grid);
+
+      if (data.insights && data.insights.length) {
+        const insightsWrap = document.createElement("div");
+        insightsWrap.style.marginTop = "12px";
+        for (const tip of data.insights) {
+          const line = document.createElement("div");
+          const color = tip.level === "warning" ? "#e0a72b" : tip.level === "ok" ? "#1baf7a" : "#5b9cf5";
+          line.style.cssText = `font-size:11px;color:#c7c9d1;margin-top:6px;padding-left:10px;border-left:2px solid ${color}`;
+          line.textContent = tip.text;
+          insightsWrap.append(line);
+        }
+        root.append(insightsWrap);
+      }
+    }
+
+    function renderScores() {
+      const root = document.getElementById("dash-scores");
+      root.innerHTML = "";
+      const scores = state.scores || [];
+      if (!scores.length) {
+        const empty = document.createElement("div");
+        empty.className = "muted";
+        empty.textContent = "No summary.json files yet. Scores appear here after a training run finishes.";
+        root.append(empty);
+        return;
+      }
+      const table = document.createElement("table");
+      table.innerHTML = "<thead><tr><th>Dataset</th><th>Architecture</th><th>Ratio</th><th>DERMS-R</th></tr></thead>";
+      const body = document.createElement("tbody");
+      for (const score of scores) {
+        const row = document.createElement("tr");
+        for (const value of [score.dataset, score.model, score.ratio, Number(score.derms_r).toFixed(4)]) {
+          const cell = document.createElement("td");
+          cell.textContent = value == null ? "" : String(value);
+          row.append(cell);
+        }
+        body.append(row);
+      }
+      table.append(body);
+      root.append(table);
+    }
+
+    async function loadEda() {
+      const response = await fetch("/api/eda");
+      const data = await response.json();
+      const root = document.getElementById("eda-body");
+      root.innerHTML = "";
+      document.getElementById("eda-path").textContent = state.status ? (state.status.host_datasets || state.status.datasets_path) : "";
+      for (const row of data.datasets || []) {
+        const card = document.createElement("article");
+        card.className = "job";
+        const title = document.createElement("strong");
+        title.textContent = row.id;
+        const meta = document.createElement("div");
+        meta.className = "muted";
+        meta.style.marginTop = "6px";
+        const images = row.image_count_truncated ? `${row.image_count}+ images` : `${row.image_count} images`;
+        const classes = row.class_count ? `${row.class_count} class folders` : (row.expected_classes ? `${row.expected_classes} classes expected` : "classes unknown");
+        meta.textContent = `${row.layout} · ${classes} · ${row.layout === "torchvision" ? "archive on disk" : images}`;
+        const note = document.createElement("div");
+        note.className = "muted";
+        note.style.marginTop = "4px";
+        note.textContent = row.note;
+        card.append(title, meta, note);
+        if (row.classes && row.classes.length) {
+          const table = document.createElement("table");
+          table.innerHTML = "<thead><tr><th>Class</th><th>Images</th></tr></thead>";
+          const body = document.createElement("tbody");
+          for (const item of row.classes.slice(0, 12)) {
+            const line = document.createElement("tr");
+            const name = document.createElement("td");
+            name.textContent = item.name;
+            const count = document.createElement("td");
+            count.textContent = item.truncated ? `${item.images}+` : String(item.images);
+            line.append(name, count);
+            body.append(line);
+          }
+          table.append(body);
+          card.append(table);
+        }
+        if (row.present) {
+          const insightsBtn = document.createElement("button");
+          insightsBtn.className = "scan";
+          insightsBtn.type = "button";
+          insightsBtn.style.marginTop = "10px";
+          insightsBtn.textContent = "Run Exploratory Dataset Analysis";
+          const insightsBody = document.createElement("div");
+          insightsBody.style.marginTop = "10px";
+          insightsBtn.onclick = () => loadInsights(row.id, insightsBtn, insightsBody, 5, "kfold");
+          card.append(insightsBtn, insightsBody);
+        }
+        root.append(card);
+      }
+    }
+
+    const CLASS_COLORS = ["#5b9cf5","#1baf7a","#e0a72b","#e05b5b","#a95bf0","#3ecfcf","#f07bbf","#c9d15b","#f0975b","#7b8bf0","#5bd1c4","#d15b9c"];
+    function colorFor(label, palette) {
+      let idx = palette.indexOf(label);
+      if (idx === -1) { palette.push(label); idx = palette.length - 1; }
+      return CLASS_COLORS[idx % CLASS_COLORS.length];
+    }
+
+    const METRIC_GROUPS = [
+      { title: "Dataset Statistics", rows: [
+        ["num_classes", "Number of Classes", ""],
+        ["dataset_size", "Total Images", ""],
+        ["avg_samples_per_class", "Avg Samples per Class", ""],
+      ]},
+      { title: "Distribution Metrics", rows: [
+        ["std_dev", "Standard Deviation", ""],
+        ["cv", "Coefficient of Variation", "%"],
+        ["gini", "Gini Coefficient", "%"],
+      ]},
+      { title: "Imbalance Metrics", rows: [
+        ["imbalance_ratio", "Imbalance Ratio", ""],
+        ["balancing_efficiency", "Balance Efficiency", "%"],
+        ["entropy_balance", "Entropy Balance", "%"],
+      ]},
+      { title: "Class Distribution", rows: [
+        ["max_samples", "Max Samples", ""],
+        ["min_samples", "Min Samples", ""],
+        ["max_class", "Max Class", ""],
+        ["min_class", "Min Class", ""],
+      ]},
+      { title: "Image Size", rows: [
+        ["avg_width", "Avg Width", "px"],
+        ["avg_height", "Avg Height", "px"],
+        ["min_width", "Min Width", "px"],
+        ["min_height", "Min Height", "px"],
+        ["max_width", "Max Width", "px"],
+        ["max_height", "Max Height", "px"],
+      ]},
+      { title: "Splits & Validity", rows: [
+        ["train_count", "Train Images", ""],
+        ["test_count", "Test Images", ""],
+        ["validation_count", "Validation Images", ""],
+        ["other_count", "Other Images", ""],
+        ["invalid_images", "Invalid Images", ""],
+      ]},
+    ];
+
+    function renderMetricGroups(container, metrics) {
+      const grid = document.createElement("div");
+      grid.style.cssText = "display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;margin-top:10px";
+      for (const group of METRIC_GROUPS) {
+        const card = document.createElement("div");
+        card.style.cssText = "background:#12141c;border-radius:8px;padding:10px 12px";
+        const title = document.createElement("div");
+        title.style.cssText = "font-size:11px;font-weight:700;color:#fff;margin-bottom:6px";
+        title.textContent = group.title;
+        card.append(title);
+        for (const [key, label, unit] of group.rows) {
+          const value = metrics[key];
+          if (value === null || value === undefined) continue;
+          const line = document.createElement("div");
+          line.style.cssText = "display:flex;justify-content:space-between;gap:8px;font-size:11px;margin-top:2px";
+          const l = document.createElement("span");
+          l.style.color = "#8b8fa3";
+          l.textContent = label;
+          const v = document.createElement("span");
+          v.style.color = "#e4e4e9";
+          v.textContent = `${value}${unit}`;
+          line.append(l, v);
+          card.append(line);
+        }
+        grid.append(card);
+      }
+      container.append(grid);
+      if (metrics.size_note) {
+        const note = document.createElement("div");
+        note.className = "muted";
+        note.style.marginTop = "8px";
+        note.textContent = metrics.size_note;
+        container.append(note);
+      }
+    }
+
+    function downloadDataUrl(dataUrl, filename) {
+      const a = document.createElement("a");
+      a.href = dataUrl;
+      a.download = filename;
+      document.body.append(a);
+      a.click();
+      a.remove();
+    }
+
+    function openLightbox(pngDataUrl) {
+      const img = document.getElementById("lightbox-img");
+      img.src = pngDataUrl;
+      img.style.transform = "scale(1)";
+      img.dataset.scale = "1";
+      document.getElementById("lightbox").hidden = false;
+    }
+
+    function renderPlotImage(container, title, formats, filenamePrefix) {
+      if (!formats || !formats.png) return;
+      const wrap = document.createElement("div");
+      wrap.className = "plot-block";
+      wrap.style.marginTop = "16px";
+      const heading = document.createElement("div");
+      if (title) {
+        heading.style.cssText = "font-size:12px;font-weight:600;color:#fff;margin-bottom:6px";
+        heading.textContent = title;
+      }
+      const pngUrl = `data:image/png;base64,${formats.png}`;
+      const img = document.createElement("img");
+      img.src = pngUrl;
+      img.className = "plot-thumb";
+      img.style.cssText = "max-width:100%;border-radius:8px;background:#fff";
+      img.title = "Click to zoom";
+      img.onclick = () => openLightbox(pngUrl);
+      const toolbar = document.createElement("div");
+      toolbar.className = "plot-toolbar";
+      const zoomBtn = document.createElement("button");
+      zoomBtn.type = "button"; zoomBtn.textContent = "Zoom";
+      zoomBtn.onclick = () => openLightbox(pngUrl);
+      const pngBtn = document.createElement("button");
+      pngBtn.type = "button"; pngBtn.textContent = "Download PNG (300dpi)";
+      pngBtn.onclick = () => downloadDataUrl(pngUrl, `${filenamePrefix}.png`);
+      toolbar.append(zoomBtn, pngBtn);
+      if (formats.pdf) {
+        const pdfBtn = document.createElement("button");
+        pdfBtn.type = "button"; pdfBtn.textContent = "Download PDF";
+        pdfBtn.onclick = () => downloadDataUrl(`data:application/pdf;base64,${formats.pdf}`, `${filenamePrefix}.pdf`);
+        toolbar.append(pdfBtn);
+      }
+      wrap.append(heading, img, toolbar);
+      container.append(wrap);
+    }
+
+    function renderPlotly2D(container, title, points, note) {
+      const wrap = document.createElement("div");
+      wrap.className = "plot-block";
+      wrap.style.marginTop = "16px";
+      const heading = document.createElement("div");
+      heading.style.cssText = "font-size:12px;font-weight:600;color:#fff;margin-bottom:6px";
+      heading.textContent = title;
+      wrap.append(heading);
+      if (note) {
+        const n = document.createElement("div");
+        n.className = "muted";
+        n.style.marginBottom = "6px";
+        n.textContent = note;
+        wrap.append(n);
+      }
+      if (!points || !points.length) {
+        const empty = document.createElement("div");
+        empty.className = "muted";
+        empty.textContent = "Not available.";
+        wrap.append(empty);
+        container.append(wrap);
+        return;
+      }
+      const div = document.createElement("div");
+      div.style.cssText = "max-width:640px;height:420px";
+      wrap.append(div);
+      container.append(wrap);
+      const palette = [];
+      const labels = [...new Set(points.map(p => p.label))];
+      for (const l of labels) colorFor(l, palette);
+      const traces = labels.map(label => {
+        const pts = points.filter(p => p.label === label);
+        return {
+          x: pts.map(p => p.x), y: pts.map(p => p.y),
+          mode: "markers", type: "scatter", name: label,
+          marker: { size: 6, opacity: 0.8, color: colorFor(label, palette) },
+        };
+      });
+      Plotly.newPlot(div, traces, {
+        paper_bgcolor: "#12141c", plot_bgcolor: "#12141c",
+        font: { family: "DejaVu Sans, sans-serif", color: "#c7c9d1", size: 10 },
+        margin: { l: 40, r: 10, t: 10, b: 40 },
+        xaxis: { title: "Component 1", gridcolor: "#1a1d27" },
+        yaxis: { title: "Component 2", gridcolor: "#1a1d27" },
+        legend: { font: { size: 9 } },
+      }, {
+        responsive: true, scrollZoom: true,
+        toImageButtonOptions: { format: "png", filename: title.replace(/\s+/g, "_"), scale: 4 },
+      });
+      wrap.append(plotlyToolbar(div, title));
+    }
+
+    function plotlyToolbar(div, title, is3d) {
+      const toolbar = document.createElement("div");
+      toolbar.className = "plot-toolbar";
+      const pngBtn = document.createElement("button");
+      pngBtn.type = "button"; pngBtn.textContent = "Download PNG (high-res)";
+      pngBtn.onclick = () => Plotly.downloadImage(div, { format: "png", scale: 4, filename: title.replace(/\s+/g, "_") });
+      toolbar.append(pngBtn);
+      if (!is3d) {
+        const svgBtn = document.createElement("button");
+        svgBtn.type = "button"; svgBtn.textContent = "Download SVG (vector)";
+        svgBtn.onclick = () => Plotly.downloadImage(div, { format: "svg", filename: title.replace(/\s+/g, "_") });
+        toolbar.append(svgBtn);
+      }
+      const resetBtn = document.createElement("button");
+      resetBtn.type = "button"; resetBtn.textContent = "Reset View";
+      resetBtn.onclick = () => Plotly.relayout(div, is3d ? { "scene.camera": null } : { "xaxis.autorange": true, "yaxis.autorange": true });
+      toolbar.append(resetBtn);
+      return toolbar;
+    }
+
+    function renderPlotly3D(container, title, points, note) {
+      const wrap = document.createElement("div");
+      wrap.className = "plot-block";
+      wrap.style.marginTop = "16px";
+      const heading = document.createElement("div");
+      heading.style.cssText = "font-size:12px;font-weight:600;color:#fff;margin-bottom:6px";
+      heading.textContent = title;
+      wrap.append(heading);
+      if (note) {
+        const n = document.createElement("div");
+        n.className = "muted";
+        n.style.marginBottom = "6px";
+        n.textContent = note;
+        wrap.append(n);
+      }
+      if (!points || !points.length) {
+        const empty = document.createElement("div");
+        empty.className = "muted";
+        empty.textContent = "Not available.";
+        wrap.append(empty);
+        container.append(wrap);
+        return;
+      }
+      const div = document.createElement("div");
+      div.style.cssText = "max-width:640px;height:480px";
+      wrap.append(div);
+      container.append(wrap);
+      const palette = [];
+      const labels = [...new Set(points.map(p => p.label))];
+      for (const l of labels) colorFor(l, palette);
+      const traces = labels.map(label => {
+        const pts = points.filter(p => p.label === label);
+        return {
+          x: pts.map(p => p.x), y: pts.map(p => p.y), z: pts.map(p => p.z),
+          mode: "markers", type: "scatter3d", name: label,
+          marker: { size: 3, opacity: 0.8, color: colorFor(label, palette) },
+        };
+      });
+      Plotly.newPlot(div, traces, {
+        paper_bgcolor: "#12141c",
+        font: { family: "DejaVu Sans, sans-serif", color: "#c7c9d1", size: 10 },
+        margin: { l: 0, r: 0, t: 10, b: 0 },
+        scene: {
+          xaxis: { title: "Component 1", gridcolor: "#1a1d27", backgroundcolor: "#12141c" },
+          yaxis: { title: "Component 2", gridcolor: "#1a1d27", backgroundcolor: "#12141c" },
+          zaxis: { title: "Component 3", gridcolor: "#1a1d27", backgroundcolor: "#12141c" },
+        },
+        legend: { font: { size: 9 } },
+      }, {
+        responsive: true,
+        toImageButtonOptions: { format: "png", filename: title.replace(/\s+/g, "_"), scale: 4 },
+      });
+      wrap.append(plotlyToolbar(div, title, true));
+    }
+
+    function createXaiPanel(datasetId, section) {
+      const panel = document.createElement("div");
+      panel.className = "xai-panel";
+      const title = document.createElement("div");
+      title.className = "xai-title";
+      title.textContent = "AI Insight";
+      const textEl = document.createElement("div");
+      textEl.textContent = "Loading…";
+      panel.append(title, textEl);
+      fetch(`/api/eda/explain?dataset=${encodeURIComponent(datasetId)}&section=${section}`)
+        .then(r => r.json())
+        .then(d => { textEl.textContent = d.text || d.error || "No insight available."; })
+        .catch(err => { textEl.textContent = `Failed to load: ${err}`; });
+      return panel;
+    }
+
+    function xaiRow(container, buildContent, datasetId, section) {
+      const row = document.createElement("div");
+      row.className = "xai-row";
+      const content = document.createElement("div");
+      content.className = "xai-content";
+      buildContent(content);
+      row.append(content, createXaiPanel(datasetId, section));
+      container.append(row);
+    }
+
+    async function loadInsights(datasetId, button, body, cvK, cvStrategy) {
+      button.disabled = true;
+      button.textContent = "Computing exploratory dataset analysis…";
+      body.innerHTML = "";
+      try {
+        const response = await fetch(`/api/eda/insights?dataset=${encodeURIComponent(datasetId)}&cv_k=${cvK}&cv_strategy=${cvStrategy}`);
+        const data = await response.json();
+        button.remove();
+        if (!data.available) {
+          const msg = document.createElement("div");
+          msg.className = "muted";
+          msg.textContent = data.reason || "Exploratory Dataset Analysis is not available for this dataset.";
+          body.append(msg);
+          return;
+        }
+
+        const summary = document.createElement("div");
+        summary.className = "muted";
+        summary.textContent = `Metrics computed over the full ${data.metrics.dataset_size} labeled images. Plots/PCA/t-SNE sampled ${data.sample_size} images.`;
+        body.append(summary);
+
+        xaiRow(body, (c) => renderMetricGroups(c, data.metrics), datasetId, "metrics");
+
+        xaiRow(body, (c) => {
+          renderPlotImage(c, "Class Distribution", data.plots.distribution_plot, `${datasetId}_class_distribution`);
+          renderPlotImage(c, "Class Distribution with Balance Efficiency", data.plots.insights_plot, `${datasetId}_balance_efficiency`);
+        }, datasetId, "distribution");
+
+        xaiRow(body, (c) => {
+          if (data.rgb_insights) {
+            const rgbTitle = document.createElement("div");
+            rgbTitle.style.cssText = "font-size:12px;font-weight:600;color:#fff";
+            rgbTitle.textContent = "RGB insights (sample)";
+            c.append(rgbTitle);
+            const stats = data.rgb_insights.channel_stats;
+            const line = document.createElement("div");
+            line.className = "muted";
+            line.style.marginTop = "4px";
+            line.textContent = `Dominant: ${data.rgb_insights.color_dominance} · Brightness: ${data.rgb_insights.brightness_level} · Contrast: ${data.rgb_insights.contrast_level} · ` +
+              `R(mean ${stats.red.mean}, std ${stats.red.std}) G(mean ${stats.green.mean}, std ${stats.green.std}) B(mean ${stats.blue.mean}, std ${stats.blue.std})`;
+            c.append(line);
+          }
+          renderPlotImage(c, "RGB Channel Distribution", data.plots.rgb_histogram, `${datasetId}_rgb_histogram`);
+        }, datasetId, "rgb");
+
+        renderPlotImage(body, "Sample Image per Class", data.plots.sample_per_class, `${datasetId}_sample_per_class`);
+
+        // Cross-validation: controls + plot, independently recomputable.
+        const cvWrap = document.createElement("div");
+        cvWrap.style.marginTop = "16px";
+        const cvHeading = document.createElement("div");
+        cvHeading.style.cssText = "font-size:12px;font-weight:600;color:#fff;margin-bottom:6px";
+        cvHeading.textContent = "Cross-Validation Split";
+        const cvControls = document.createElement("div");
+        cvControls.style.cssText = "display:flex;gap:8px;align-items:center;margin-bottom:8px";
+        const kInput = document.createElement("input");
+        kInput.type = "number"; kInput.min = "2"; kInput.max = "20"; kInput.value = String(data.crossval.k);
+        kInput.style.cssText = "width:60px;background:#12141c;border:1px solid #262a38;border-radius:6px;color:#fff;padding:4px 8px;font-size:12px";
+        const strategySelect = document.createElement("select");
+        strategySelect.style.cssText = "background:#12141c;border:1px solid #262a38;border-radius:6px;color:#fff;padding:4px 8px;font-size:12px";
+        for (const opt of ["kfold", "stratified"]) {
+          const option = document.createElement("option");
+          option.value = opt; option.textContent = opt === "kfold" ? "K-Fold" : "Stratified K-Fold";
+          if (opt === data.crossval.strategy) option.selected = true;
+          strategySelect.append(option);
+        }
+        const recomputeBtn = document.createElement("button");
+        recomputeBtn.className = "scan"; recomputeBtn.type = "button"; recomputeBtn.textContent = "Recompute";
+        const cvImgWrap = document.createElement("div");
+        recomputeBtn.onclick = () => {
+          cvImgWrap.innerHTML = "";
+          const loading = document.createElement("div");
+          loading.className = "muted"; loading.textContent = "Computing…";
+          cvImgWrap.append(loading);
+          fetch(`/api/eda/insights?dataset=${encodeURIComponent(datasetId)}&cv_k=${kInput.value}&cv_strategy=${strategySelect.value}`)
+            .then(r => r.json())
+            .then(d => {
+              cvImgWrap.innerHTML = "";
+              if (d.available && d.crossval && d.crossval.plot) {
+                renderPlotImage(cvImgWrap, "", d.crossval.plot, `${datasetId}_crossval_${strategySelect.value}_k${kInput.value}`);
+              }
+            });
+        };
+        cvControls.append(kInput, strategySelect, recomputeBtn);
+        cvWrap.append(cvHeading, cvControls, cvImgWrap);
+        if (data.crossval.plot) {
+          renderPlotImage(cvImgWrap, "", data.crossval.plot, `${datasetId}_crossval_${data.crossval.strategy}_k${data.crossval.k}`);
+        }
+        xaiRow(body, (c) => c.append(cvWrap), datasetId, "crossval");
+
+        const pcaNote = data.pca_explained_variance != null
+          ? `First 2 principal components (mean-RGB feature) explain ${(data.pca_explained_variance * 100).toFixed(1)}% of variance.`
+          : null;
+        xaiRow(body, (c) => renderPlotly2D(c, "PCA (2D, mean-RGB feature)", data.pca, pcaNote), datasetId, "pca");
+        xaiRow(body, (c) => renderPlotly3D(c, "t-SNE (3D, mean-RGB feature)", data.tsne3d,
+          data.tsne3d ? null : "Sample too small for a stable t-SNE embedding."), datasetId, "tsne");
+      } catch (err) {
+        button.remove();
+        const msg = document.createElement("div");
+        msg.className = "muted";
+        msg.textContent = `Exploratory Dataset Analysis failed: ${err}`;
+        body.append(msg);
+      }
+    }
+
+    function renderAdmin() {
+      const access = document.getElementById("admin-access");
+      const status = state.status || {};
+      const mlflow = status.mlflow || {};
+      access.innerHTML = "";
+      const table = document.createElement("table");
+      table.innerHTML = "<thead><tr><th>Setting</th><th>Value</th></tr></thead>";
+      const body = document.createElement("tbody");
+      const rows = [
+        ["Operator", "local"],
+        ["Accounts", "none"],
+        ["Training image", status.image || ""],
+        ["Datasets", status.host_datasets || status.datasets_path || ""],
+        ["MLflow container", mlflow.container || mlflow.error || "not found"],
+        ["Tracking URI", mlflow.tracking_uri || ""],
+        ["MLflow UI", mlflow.host_url || ""],
+      ];
+      for (const pair of rows) {
+        const line = document.createElement("tr");
+        for (const value of pair) {
+          const cell = document.createElement("td");
+          cell.textContent = value;
+          line.append(cell);
+        }
+        body.append(line);
+      }
+      table.append(body);
+      access.append(table);
+      const audit = document.getElementById("admin-audit");
+      audit.innerHTML = "";
+      if (!state.jobs.length) {
+        const empty = document.createElement("div");
+        empty.className = "muted";
+        empty.textContent = "No actions recorded.";
+        audit.append(empty);
+        return;
+      }
+      const log = document.createElement("table");
+      log.innerHTML = "<thead><tr><th>When</th><th>Action</th><th>State</th><th>Datasets</th><th>Models</th><th>Email</th></tr></thead>";
+      const logBody = document.createElement("tbody");
+      for (const job of state.jobs) {
+        const line = document.createElement("tr");
+        const values = [
+          job.created_at || "",
+          job.action,
+          job.state,
+          (job.datasets || []).join(", "),
+          (job.models || []).join(", "),
+          job.notify_email ? `${job.notify_email} (not sent)` : "",
+        ];
+        for (const value of values) {
+          const cell = document.createElement("td");
+          cell.textContent = value;
+          line.append(cell);
+        }
+        logBody.append(line);
+      }
+      log.append(logBody);
+      audit.append(log);
+    }
+
+    async function refreshJobs() {
+      const response = await fetch("/api/jobs");
+      if (response.status === 401) {
+        clearInterval(state.timer);
+        showLogin("Session expired. Please log in again.");
+        throw new Error("unauthenticated");
+      }
+      const data = await response.json();
+      state.jobs = data.jobs || [];
+      renderJobs(state.jobs);
+      if (state.view === "dashboard") renderDashboard();
+      if (state.view === "administration") renderAdmin();
+      if (state.selectedJob) {
+        const logs = document.getElementById(`logs-${state.selectedJob}`);
+        if (logs) {
+          const logResponse = await fetch(`/api/jobs/${state.selectedJob}/logs`);
+          const body = await logResponse.json();
+          logs.hidden = false;
+          logs.textContent = body.logs || "(no output yet)";
+        }
+      }
+    }
+
+    function resetDefaults() {
+      document.getElementById("batch").value = "32";
+      document.getElementById("epochs").value = "50";
+      document.getElementById("lr").value = "1e-4";
+      document.getElementById("wd").value = "0.01";
+      document.getElementById("seed").value = "42";
+      document.getElementById("holdout").value = "0.20";
+      document.getElementById("experiment").value = "derms-r-benchmark";
+      document.getElementById("deployment").value = "single";
+      document.getElementById("augmentation").checked = true;
+      document.getElementById("pretrained").checked = true;
+      document.getElementById("artifacts").checked = false;
+      document.getElementById("email").value = "";
+      setMode("fixed");
+      for (const input of document.querySelectorAll('input[name="dataset"], input[name="model"]')) {
+        const row = (input.name === "dataset" ? state.status.datasets : state.status.models).find(item => item.id === input.value);
+        input.checked = !!(row && row.default);
+      }
+      if (state.status && !state.status.gpu) document.getElementById("device").value = "cpu";
+      else document.getElementById("device").value = "cuda:0";
+      renderSummaryOnly();
+    }
+
+    document.getElementById("mode-fixed").onclick = () => setMode("fixed");
+    document.getElementById("mode-range").onclick = () => setMode("range");
+    document.getElementById("reset").onclick = resetDefaults;
+    document.getElementById("scan").onclick = refreshStatus;
+    document.getElementById("start").onclick = () => submit("train");
+    document.getElementById("prepare").onclick = () => submit("prepare");
+    document.getElementById("data-all").onclick = () => {
+      for (const input of document.querySelectorAll('input[name="dataset"]')) input.checked = true;
+      renderSummaryOnly();
+    };
+    document.getElementById("model-all").onclick = () => {
+      for (const input of document.querySelectorAll('input[name="model"]')) input.checked = true;
+      renderSummaryOnly();
+    };
+    document.getElementById("ratio-all").onclick = () => {
+      for (const input of document.querySelectorAll('input[name="ratio-highlight"]')) input.checked = true;
+    };
+    document.getElementById("ratio-none").onclick = () => {
+      for (const input of document.querySelectorAll('input[name="ratio-highlight"]')) input.checked = false;
+    };
+    document.getElementById("dash-config").onclick = () => showView("configuration");
+    document.getElementById("eda-scan").onclick = () => loadEda();
+    for (const button of document.querySelectorAll("[data-view]")) {
+      button.onclick = () => showView(button.dataset.view);
+    }
+
+    document.getElementById("user-create").onclick = async () => {
+      const username = document.getElementById("new-username").value.trim();
+      const password = document.getElementById("new-password").value;
+      const role = document.getElementById("new-role").value;
+      const err = document.getElementById("user-create-error");
+      err.hidden = true;
+      const response = await fetch("/api/users", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username, password, role }),
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        err.textContent = data.error || "Could not create user.";
+        err.hidden = false;
+        return;
+      }
+      document.getElementById("new-username").value = "";
+      document.getElementById("new-password").value = "";
+      renderUsers();
+    };
+
+    function showLogin(message) {
+      document.getElementById("app-shell").hidden = true;
+      document.getElementById("login-screen").hidden = false;
+      const err = document.getElementById("login-error");
+      if (message) { err.textContent = message; err.hidden = false; }
+      else { err.hidden = true; }
+      document.getElementById("login-password").value = "";
+    }
+
+    function showApp(user) {
+      state.user = user;
+      document.getElementById("login-screen").hidden = true;
+      document.getElementById("change-password-screen").hidden = true;
+      document.getElementById("app-shell").hidden = false;
+      document.getElementById("whoami").textContent =
+        `${user.username} · ${user.role === "sysadmin" ? "Sys Admin" : "ML User"}`;
+      document.getElementById("nav-users").hidden = user.role !== "sysadmin";
+    }
+
+    function showChangePasswordScreen(user, message) {
+      state.user = user;
+      document.getElementById("login-screen").hidden = true;
+      document.getElementById("app-shell").hidden = true;
+      document.getElementById("change-password-screen").hidden = false;
+      const err = document.getElementById("change-password-error");
+      if (message) { err.textContent = message; err.hidden = false; }
+      else { err.hidden = true; }
+      document.getElementById("cp-current").value = "";
+      document.getElementById("cp-new").value = "";
+      document.getElementById("cp-confirm").value = "";
+    }
+
+    function boot() {
+      refreshStatus().then(refreshJobs).then(() => {
+        const initial = (location.hash || "#dashboard").slice(1);
+        showView(TITLES[initial] ? initial : "dashboard");
+      }).catch(error => { if (String(error) !== "Error: unauthenticated") banner(String(error), "bad"); });
+      state.timer = setInterval(() => { refreshJobs().catch(() => {}); }, 3000);
+    }
+
+    async function doLogin() {
+      const username = document.getElementById("login-username").value.trim();
+      const password = document.getElementById("login-password").value;
+      const btn = document.getElementById("login-submit");
+      btn.disabled = true;
+      btn.textContent = "Signing in…";
+      try {
+        const response = await fetch("/api/auth/login", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ username, password }),
+        });
+        const data = await response.json();
+        if (!response.ok) {
+          showLogin(data.error || "Login failed.");
+          return;
+        }
+        if (data.user.must_change_password) {
+          showChangePasswordScreen(data.user);
+          return;
+        }
+        showApp(data.user);
+        boot();
+      } finally {
+        btn.disabled = false;
+        btn.textContent = "Log in";
+      }
+    }
+
+    async function doLogout() {
+      clearInterval(state.timer);
+      await fetch("/api/auth/logout", { method: "POST" }).catch(() => {});
+      state.user = null;
+      showLogin();
+    }
+
+    async function doChangePassword() {
+      const current = document.getElementById("cp-current").value;
+      const next = document.getElementById("cp-new").value;
+      const confirm = document.getElementById("cp-confirm").value;
+      if (next !== confirm) {
+        showChangePasswordScreen(state.user, "New password and confirmation don't match.");
+        return;
+      }
+      const btn = document.getElementById("cp-submit");
+      btn.disabled = true;
+      btn.textContent = "Setting password…";
+      try {
+        const response = await fetch("/api/auth/change-password", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ current_password: current, new_password: next }),
+        });
+        const data = await response.json();
+        if (!response.ok) {
+          showChangePasswordScreen(state.user, data.error || "Could not set new password.");
+          return;
+        }
+        const user = { ...state.user, must_change_password: false };
+        showApp(user);
+        boot();
+      } finally {
+        btn.disabled = false;
+        btn.textContent = "Set new password";
+      }
+    }
+
+    document.getElementById("login-submit").onclick = doLogin;
+    document.getElementById("login-password").addEventListener("keydown", (event) => {
+      if (event.key === "Enter") doLogin();
+    });
+    document.getElementById("logout-btn").onclick = doLogout;
+    document.getElementById("download-report").onclick = () => window.print();
+    document.getElementById("cp-submit").onclick = doChangePassword;
+    document.getElementById("cp-logout").onclick = doLogout;
+    document.getElementById("cp-confirm").addEventListener("keydown", (event) => {
+      if (event.key === "Enter") doChangePassword();
+    });
+
+    (function wireLightbox() {
+      const box = document.getElementById("lightbox");
+      const img = document.getElementById("lightbox-img");
+      const setScale = (s) => {
+        const clamped = Math.max(0.25, Math.min(s, 6));
+        img.dataset.scale = String(clamped);
+        img.style.transform = `scale(${clamped})`;
+      };
+      document.getElementById("lightbox-zoom-in").onclick = () => setScale(parseFloat(img.dataset.scale || "1") + 0.25);
+      document.getElementById("lightbox-zoom-out").onclick = () => setScale(parseFloat(img.dataset.scale || "1") - 0.25);
+      document.getElementById("lightbox-zoom-reset").onclick = () => setScale(1);
+      document.getElementById("lightbox-close").onclick = () => { box.hidden = true; };
+      box.addEventListener("click", (event) => { if (event.target === box) box.hidden = true; });
+      document.addEventListener("keydown", (event) => {
+        if (event.key === "Escape" && !box.hidden) box.hidden = true;
+      });
+    })();
+
+    fetch("/api/auth/me").then(r => r.json()).then(data => {
+      if (!data.authenticated) { showLogin(); return; }
+      if (data.user.must_change_password) { showChangePasswordScreen(data.user); return; }
+      showApp(data.user);
+      boot();
+    }).catch(() => showLogin("Could not reach the server."));
+  </script>
+</body>
+</html>

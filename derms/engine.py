@@ -109,7 +109,9 @@ def fit(ds, train_ids, val_ids, cfg, name, nclasses, directory, identity, seed, 
         if cfg['device'].startswith('cuda'):
             torch.cuda.reset_peak_memory_stats(cfg['device'])
         total, seen = 0.0, 0
-        for x, target in dl:
+        epoch_started = time.perf_counter()
+        progress_every = max(1, len(dl) // 10)
+        for batch_index, (x, target) in enumerate(dl, start=1):
             x, target = x.to(cfg['device']), target.to(cfg['device'])
             optimizer.zero_grad(set_to_none=True)
             # Avoid singleton-batch BatchNorm failure without discarding scarce samples.
@@ -128,9 +130,21 @@ def fit(ds, train_ids, val_ids, cfg, name, nclasses, directory, identity, seed, 
                 module.train()
             total += loss.item() * len(target)
             seen += len(target)
+            if batch_index % progress_every == 0 or batch_index == len(dl):
+                elapsed = time.perf_counter() - epoch_started
+                print(
+                    f'{directory.name} epoch {epoch+1}/{epochs}: '
+                    f'train batch {batch_index}/{len(dl)} '
+                    f'({100 * batch_index / len(dl):.0f}%, {elapsed:.1f}s)',
+                    flush=True,
+                )
         if cfg['device'].startswith('cuda'):
             peak = max(peak or 0, torch.cuda.max_memory_allocated(cfg['device']))
-        row = {'epoch': epoch + 1, 'train_loss': total / seen, 'lr': optimizer.param_groups[0]['lr']}
+        row = {
+            'epoch': epoch + 1,
+            'train_loss': total / seen,
+            'lr': optimizer.param_groups[0]['lr'],
+        }
         if val_ids is not None:
             result, _, _, _ = evaluate(model, loader(ds, val_ids, cfg, False, seed), cfg['device'], nclasses)
             row.update({f'val_{k}': v for k, v in result.items() if not isinstance(v, (list, dict))})
@@ -141,6 +155,7 @@ def fit(ds, train_ids, val_ids, cfg, name, nclasses, directory, identity, seed, 
             # Fixed-budget final refit: no validation or test-based checkpoint selection.
             best_loss, best_epoch = total / seen, epoch + 1
             best_state, best_metrics = cpu_state(model), None
+        row['epoch_seconds'] = time.perf_counter() - epoch_started
         scheduler.step()
         history.append(row)
         atomic_torch(last, {'identity': identity, 'epoch': epoch + 1, 'model': cpu_state(model),

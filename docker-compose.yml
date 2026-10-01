@@ -1,0 +1,67 @@
+# Training configuration UI + MLflow. `docker compose up` serves the page and
+# starts MLflow. `docker compose --profile train build` builds the image that
+# page launches. The page finds the mlflow container by name, attaches each
+# training container to the same network, and points MLflow at
+# http://mlflow:5000, which works across containers. localhost does not.
+# Host port 5001 (not 5000) avoids clashing with macOS AirPlay Receiver.
+services:
+  orchestrator:
+    build:
+      context: .
+      dockerfile: Dockerfile.orchestrator
+    image: derms-r-orchestrator:latest
+    ports:
+      - "8080:8080"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./datasets:/data/datasets:ro
+      - ./results:/data/results
+      - ./hf-cache:/data/hf-cache
+    environment:
+      MLFLOW_CONTAINER: ${MLFLOW_CONTAINER:-mlflow}
+      DERMS_NETWORK: ${DERMS_NETWORK:-derms-r}
+      DERMS_IMAGE: derms-r-train:cpu
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+      HF_TOKEN: ${HF_TOKEN:-}
+      HUGGING_FACE_HUB_TOKEN: ${HF_TOKEN:-}
+    networks:
+      - derms-r
+    depends_on:
+      - mlflow
+    restart: unless-stopped
+
+  mlflow:
+    image: ghcr.io/mlflow/mlflow:v2.9.2
+    container_name: mlflow
+    command: >
+      mlflow server --host 0.0.0.0 --port 5000
+      --backend-store-uri sqlite:////mlflow/mlflow.db
+      --default-artifact-root /mlflow/artifacts
+    ports:
+      - "5001:5000"
+    volumes:
+      - ./mlflow-data:/mlflow
+    networks:
+      - derms-r
+    restart: unless-stopped
+
+  train:
+    profiles: ["train"]
+    image: derms-r-train:cpu
+    build:
+      context: .
+      # Native CPU by default (including Apple Silicon). The GPU override
+      # replaces this with the CUDA Dockerfile on NVIDIA hosts.
+      dockerfile: Dockerfile.cpu
+    entrypoint: ["python", "train.py"]
+    command: ["--verify-models"]
+    environment:
+      HF_TOKEN: ${HF_TOKEN:-}
+      HUGGING_FACE_HUB_TOKEN: ${HF_TOKEN:-}
+      HF_HOME: /root/.cache/huggingface
+    volumes:
+      - ./hf-cache:/root/.cache/huggingface
+
+networks:
+  derms-r:
+    name: derms-r

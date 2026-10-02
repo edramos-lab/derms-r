@@ -31,6 +31,9 @@ it's given. So one Job per (model, dataset) pair covers 25 fits:
 ## Deploy order
 
 ```bash
+# 0. No Kubernetes cluster yet? Stand one up with k3s (one-time):
+#    See 00-cluster-install/README.md.
+
 # 1. GPU nodes: toolkit, device plugin, labels (one-time per cluster)
 #    See 30-gpu-setup/README.md.
 
@@ -135,6 +138,7 @@ identical Prometheus metric names.
 ## Files
 
 ```
+00-cluster-install/                k3s server/agent install scripts (no cluster yet? start here)
 00-namespace.yaml                  derms-r namespace
 10-storage/                        PVCs for datasets, hf-cache, results, mlflow data
 20-mlflow/mlflow.yaml              MLflow server (Deployment + Service)

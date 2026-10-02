@@ -1,17 +1,48 @@
 # GPU node setup
 
-One-time per cluster. Do this before applying anything under `60-jobs/`.
+One-time per cluster. Assumes `../00-cluster-install/` is already done (a
+working `kubectl get nodes` showing both boxes `Ready`). Do this before
+applying anything under `60-jobs/`.
 
 ## 1. NVIDIA Container Toolkit on every GPU node
 
 Both the RTX 5000 Ada node and the RTX 5090 node need the NVIDIA Container
-Toolkit registered as the container runtime (same thing the RTX 5000 Ada box
-already needed for plain `docker run --gpus all`, per the existing
-deployment notes for that host). Verify on each node:
+Toolkit installed, and its runtime registered with **k3s's bundled
+containerd** — not the system containerd/Docker config, since k3s doesn't
+use either. Verify the driver first, then register the runtime at k3s's
+templated config path and restart k3s so it picks up the change:
 
 ```bash
-nvidia-smi                 # driver + GPU visible
-nvidia-ctk runtime configure --runtime=containerd   # or docker, matching your CRI
+nvidia-smi   # driver + GPU visible
+
+# NVIDIA Container Toolkit itself, if not already installed (same package
+# the RTX 5000 Ada box already needed for plain `docker run --gpus all`):
+#   https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html
+
+sudo nvidia-ctk runtime configure --runtime=containerd \
+  --config=/var/lib/rancher/k3s/agent/etc/containerd/config.toml.tmpl \
+  --set-as-default
+
+# RTX 5000 Ada box (runs the k3s server):
+sudo systemctl restart k3s
+# RTX 5090 box (runs the k3s agent):
+sudo systemctl restart k3s-agent
+```
+
+`--set-as-default` makes the NVIDIA runtime the default for every container
+on that node, which is fine here since both nodes are dedicated to this
+benchmark — it means the Job manifests in `../60-jobs/` don't need a
+`runtimeClassName` field. (Using plain kubeadm/upstream k8s instead of k3s?
+Point `--config` at `/etc/containerd/config.toml`, the standard path, and
+restart `containerd` instead.)
+
+Confirm the runtime actually works before moving on:
+
+```bash
+kubectl run gpu-check --rm -it --restart=Never \
+  --image=nvidia/cuda:12.1.1-base-ubuntu22.04 \
+  --overrides='{"spec":{"nodeSelector":{"kubernetes.io/hostname":"<node-name>"}}}' \
+  -- nvidia-smi
 ```
 
 ## 2. Install the NVIDIA device plugin (DaemonSet)

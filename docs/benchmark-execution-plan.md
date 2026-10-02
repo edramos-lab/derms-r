@@ -158,7 +158,17 @@ Estimated time at epochs=10, scaling the GPU pool, under the 20:00–08:00 windo
 Full deployable package in `k8s/` — condensed version of `k8s/README.md`:
 
 ```bash
-# 1. One-time per cluster: NVIDIA device plugin + node labels (k8s/30-gpu-setup/README.md)
+# 0. No Kubernetes cluster yet? Stand one up with k3s (k8s/00-cluster-install/):
+#    on the RTX 5000 Ada box:
+./k8s/00-cluster-install/install-k3s-server.sh    # prints K3S_URL + K3S_TOKEN
+#    on the RTX 5090 box:
+K3S_URL=https://<server-ip>:6443 K3S_TOKEN=<token> ./k8s/00-cluster-install/install-k3s-agent.sh
+
+# 1. GPU nodes: NVIDIA Container Toolkit registered with k3s's bundled
+#    containerd (k3s uses its own path, not the system default), device
+#    plugin, node labels (k8s/30-gpu-setup/README.md)
+sudo nvidia-ctk runtime configure --runtime=containerd \
+  --config=/var/lib/rancher/k3s/agent/etc/containerd/config.toml.tmpl --set-as-default
 helm install nvdp nvdp/nvidia-device-plugin --namespace nvidia-device-plugin --create-namespace
 kubectl label node <rtx-5000-ada-node> gpu-arch=ada
 kubectl label node <rtx-5090-node>     gpu-arch=blackwell
@@ -179,6 +189,8 @@ kubectl apply -k k8s/60-jobs/generated/
 # 5. Watch it run
 kubectl get jobs -n derms-r -L derms.gpu-arch -w
 ```
+
+k3s was chosen over kubeadm/vanilla k8s specifically for this 2-node, single-purpose cluster: single-binary install, no separate etcd to operate, and both nodes still run training Jobs (k3s doesn't taint the server node). The one real consequence is the k3s-specific containerd path in step 1 above — everything else (device plugin, Helm charts, the Job manifests) is unmodified, conformant Kubernetes either way.
 
 Re-run step 4 with `--epochs 50` into a fresh output path once the dry run validates end-to-end. GPU/system monitoring (`k8s/80-monitoring/`) and the optional ALL-dataset prep job (`k8s/50-prepare/`) are also covered in `k8s/README.md`.
 

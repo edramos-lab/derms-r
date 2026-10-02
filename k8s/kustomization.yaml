@@ -1,0 +1,15 @@
+# Static cluster scaffolding: namespace, storage, MLflow, and the two RBAC
+# bindings. Apply this first (`kubectl apply -k k8s/`), then generate and
+# apply the Job matrix separately (60-jobs/generate_manifests.py) -- that
+# part isn't included here because its image registry and epoch count are
+# run-specific, not fixed cluster config. Edit the REPLACE_ME_* placeholders
+# in 10-storage/*.yaml and 70-scheduling/operating-window-cronjobs.yaml
+# before applying.
+resources:
+  - 00-namespace.yaml
+  - 10-storage/pvc-datasets.yaml
+  - 10-storage/pvc-results.yaml
+  - 20-mlflow/mlflow.yaml
+  - 60-jobs/rbac.yaml
+  - 70-scheduling/rbac.yaml
+  - 70-scheduling/operating-window-cronjobs.yaml

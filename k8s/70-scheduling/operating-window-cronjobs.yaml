@@ -1,0 +1,78 @@
+# Implements the 20:00-08:00 operating window from
+# docs/benchmark-execution-plan.md Section 3.1 for the physical RTX 5000 Ada
+# + RTX 5090 pool, using Kubernetes Jobs' native `spec.suspend` field
+# (stable since 1.21): setting suspend=true deletes any running Pods for
+# that Job without deleting the Job itself; setting it back to false lets
+# the Job create fresh Pods and pick up where `--resume` left off.
+#
+# KNOWN LIMITATION: train.py has no SIGTERM handler (derms/engine.py,
+# derms/utils.py), so suspending mid-fold does not flush a mid-epoch
+# checkpoint -- the fold in progress at 08:00 restarts from its beginning
+# when the Job resumes at 20:00, not mid-epoch. Progress is only durable at
+# the granularity of completed (ratio, fold) combinations, which is what
+# --resume checks against under /workspace/results on the PVC. This is the
+# same overhead already budgeted qualitatively in the execution plan; it is
+# not a correctness problem, just wasted compute at each window boundary.
+#
+# Set spec.schedule's timezone to match your cluster/site (K8s >=1.25
+# stable `timeZone` field). On older clusters, convert 08:00/20:00 to UTC
+# in the cron expression instead and drop the `timeZone` field.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: derms-suspend-08h00
+  namespace: derms-r
+spec:
+  schedule: "0 8 * * *"
+  timeZone: "REPLACE_ME_IANA_TZ" # e.g. America/Los_Angeles
+  concurrencyPolicy: Forbid
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      template:
+        spec:
+          restartPolicy: Never
+          serviceAccountName: derms-job-scheduler
+          containers:
+            - name: suspend
+              image: bitnami/kubectl:1.29
+              command:
+                - bash
+                - -c
+                - |
+                  set -euo pipefail
+                  jobs=$(kubectl get jobs -n derms-r -l 'derms.role in (train,lock)' -o name)
+                  for j in $jobs; do
+                    kubectl patch "$j" -n derms-r --type merge -p '{"spec":{"suspend":true}}'
+                  done
+                  echo "Suspended: ${jobs:-none}"
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: derms-resume-20h00
+  namespace: derms-r
+spec:
+  schedule: "0 20 * * *"
+  timeZone: "REPLACE_ME_IANA_TZ"
+  concurrencyPolicy: Forbid
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      template:
+        spec:
+          restartPolicy: Never
+          serviceAccountName: derms-job-scheduler
+          containers:
+            - name: resume
+              image: bitnami/kubectl:1.29
+              command:
+                - bash
+                - -c
+                - |
+                  set -euo pipefail
+                  jobs=$(kubectl get jobs -n derms-r -l 'derms.role in (train,lock)' -o name)
+                  for j in $jobs; do
+                    kubectl patch "$j" -n derms-r --type merge -p '{"spec":{"suspend":false}}'
+                  done
+                  echo "Resumed: ${jobs:-none}"

@@ -10,3 +10,4 @@ wandb/
 mlflow-data/
 hf-cache/
 .claude/settings.local.json
+k8s/60-jobs/generated/

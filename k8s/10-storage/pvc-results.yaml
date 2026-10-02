@@ -1,0 +1,31 @@
+# Holds results/ (per-dataset fold checkpoints, lock.json, metrics) and MLflow's
+# local file store. ReadWriteMany: training Jobs on both GPU node types, the
+# lock Job, and MLflow all read/write here. This is also what makes --resume
+# safe across the 20:00-08:00 Job suspend/resume cycle (see
+# ../70-scheduling/operating-window-cronjobs.yaml) -- progress survives a pod
+# restart because it's on the PVC, not node-local disk.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: derms-results
+  namespace: derms-r
+spec:
+  accessModes:
+    - ReadWriteMany
+  storageClassName: REPLACE_ME_RWX_STORAGECLASS
+  resources:
+    requests:
+      storage: 50Gi
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: derms-mlflow-data
+  namespace: derms-r
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: REPLACE_ME_STORAGECLASS # RWO is fine; only the MLflow pod mounts this
+  resources:
+    requests:
+      storage: 20Gi

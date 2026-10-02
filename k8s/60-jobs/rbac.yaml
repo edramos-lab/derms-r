@@ -1,0 +1,35 @@
+# Two narrow in-namespace RBAC grants:
+#  - derms-lock-waiter: lets a lock Job's initContainer poll the status of its
+#    dataset's 12 train Jobs before refitting the winner (see
+#    generate_manifests.py's lock-job template).
+#  - derms-job-scheduler: used by the 20:00/08:00 CronJobs in
+#    ../70-scheduling/ to suspend/resume train Jobs.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: derms-lock-waiter
+  namespace: derms-r
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: derms-job-reader
+  namespace: derms-r
+rules:
+  - apiGroups: ["batch"]
+    resources: ["jobs"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: derms-lock-waiter-binding
+  namespace: derms-r
+subjects:
+  - kind: ServiceAccount
+    name: derms-lock-waiter
+    namespace: derms-r
+roleRef:
+  kind: Role
+  name: derms-job-reader
+  apiGroup: rbac.authorization.k8s.io

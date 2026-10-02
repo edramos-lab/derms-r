@@ -1,0 +1,34 @@
+# Holds datasets/ (cifar10, cifar100, flowers102, food101, the prepared "all"
+# split). Mounted read-only by every training Job. Needs ReadWriteMany since
+# Jobs land on both the RTX 5000 Ada node and the RTX 5090 node concurrently.
+#
+# Populate it once after creation, e.g. from a pod or a one-off Job that
+# mounts this PVC read-write and rsyncs the local ./datasets directory in,
+# or point the StorageClass at a volume you've already seeded out-of-band.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: derms-datasets
+  namespace: derms-r
+spec:
+  accessModes:
+    - ReadWriteMany
+  storageClassName: REPLACE_ME_RWX_STORAGECLASS # e.g. nfs-client, cephfs, longhorn (RWX-capable)
+  resources:
+    requests:
+      storage: 20Gi
+---
+# Shared Hugging Face / timm pretrained-weight cache, so each node doesn't
+# re-download the same checkpoints for every Job. Also needs RWX.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: derms-hf-cache
+  namespace: derms-r
+spec:
+  accessModes:
+    - ReadWriteMany
+  storageClassName: REPLACE_ME_RWX_STORAGECLASS
+  resources:
+    requests:
+      storage: 10Gi

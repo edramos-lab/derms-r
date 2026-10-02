@@ -1,0 +1,246 @@
+{
+  "uid": "derms-gpu-overview",
+  "title": "DERMS-R / GPU Overview (DCGM)",
+  "tags": [
+    "derms-r",
+    "gpu",
+    "dcgm"
+  ],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "15s",
+  "time": {
+    "from": "now-6h",
+    "to": "now"
+  },
+  "panels": [
+    {
+      "id": 1,
+      "title": "GPU Utilization (%)",
+      "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus-ds"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 12,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 15,
+            "stacking": {
+              "mode": "none"
+            },
+            "pointSize": 3
+          }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "expr": "DCGM_FI_DEV_GPU_UTIL",
+          "legendFormat": "{{Hostname}} GPU{{gpu}} ({{modelName}})",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "title": "GPU Memory Used (MiB)",
+      "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus-ds"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 0,
+        "w": 12,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "decmbytes",
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 15,
+            "stacking": {
+              "mode": "none"
+            },
+            "pointSize": 3
+          }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "expr": "DCGM_FI_DEV_FB_USED",
+          "legendFormat": "{{Hostname}} GPU{{gpu}} used",
+          "refId": "A"
+        },
+        {
+          "expr": "DCGM_FI_DEV_FB_FREE",
+          "legendFormat": "{{Hostname}} GPU{{gpu}} free",
+          "refId": "B"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "title": "GPU Temperature (C)",
+      "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus-ds"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 8,
+        "w": 12,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "celsius",
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 15,
+            "stacking": {
+              "mode": "none"
+            },
+            "pointSize": 3
+          }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "expr": "DCGM_FI_DEV_GPU_TEMP",
+          "legendFormat": "{{Hostname}} GPU{{gpu}} ({{modelName}})",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "title": "GPU Power Usage (W)",
+      "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus-ds"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 8,
+        "w": 12,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "watt",
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 15,
+            "stacking": {
+              "mode": "none"
+            },
+            "pointSize": 3
+          }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "expr": "DCGM_FI_DEV_POWER_USAGE",
+          "legendFormat": "{{Hostname}} GPU{{gpu}} ({{modelName}})",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "title": "SM Clock (MHz)",
+      "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus-ds"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 16,
+        "w": 12,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 15,
+            "stacking": {
+              "mode": "none"
+            },
+            "pointSize": 3
+          }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "expr": "DCGM_FI_DEV_SM_CLOCK",
+          "legendFormat": "{{Hostname}} GPU{{gpu}} ({{modelName}})",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "title": "Memory Copy Utilization (%)",
+      "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus-ds"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 16,
+        "w": 12,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 15,
+            "stacking": {
+              "mode": "none"
+            },
+            "pointSize": 3
+          }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "expr": "DCGM_FI_DEV_MEM_COPY_UTIL",
+          "legendFormat": "{{Hostname}} GPU{{gpu}} ({{modelName}})",
+          "refId": "A"
+        }
+      ]
+    }
+  ]
+}

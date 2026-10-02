@@ -1,0 +1,63 @@
+# NVIDIA DCGM Exporter: per-GPU utilization/memory/temp/power metrics, same
+# exporter and metric names (DCGM_FI_DEV_*) used by
+# ../../monitoring/docker/docker-compose.monitoring.yml, so the same Grafana
+# dashboard JSON works for both deployments.
+#
+# Runs as a DaemonSet on every node labeled gpu-arch (both the RTX 5000 Ada
+# and RTX 5090 pools from ../30-gpu-setup/README.md) -- node affinity uses
+# "key exists" rather than a fixed value so it covers both without needing
+# two copies of this manifest.
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: dcgm-exporter
+  namespace: derms-r
+  labels:
+    app: dcgm-exporter
+spec:
+  selector:
+    matchLabels:
+      app: dcgm-exporter
+  template:
+    metadata:
+      labels:
+        app: dcgm-exporter
+    spec:
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - key: gpu-arch
+                    operator: Exists
+      tolerations:
+        - key: nvidia.com/gpu
+          operator: Exists
+          effect: NoSchedule
+      containers:
+        - name: dcgm-exporter
+          image: nvcr.io/nvidia/k8s/dcgm-exporter:3.3.5-3.4.1-ubuntu22.04
+          securityContext:
+            capabilities:
+              add: ["SYS_ADMIN"]
+          ports:
+            - name: metrics
+              containerPort: 9400
+          resources:
+            requests: { cpu: "100m", memory: "128Mi" }
+            limits: { cpu: "500m", memory: "256Mi" }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: dcgm-exporter
+  namespace: derms-r
+  labels:
+    app: dcgm-exporter
+spec:
+  selector:
+    app: dcgm-exporter
+  ports:
+    - name: metrics
+      port: 9400
+      targetPort: 9400

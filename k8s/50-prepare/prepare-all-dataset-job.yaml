@@ -1,0 +1,41 @@
+# One-off: builds the leak-free development/test split for the "all" (Blood
+# Cell Cancer) dataset, per README.md's prepare_dataset.py step. Run this
+# once before any training Job that includes --datasets all. CPU-only, so it
+# doesn't need a GPU node -- but it does need the raw
+# "Blood cell Cancer [ALL]" folder already present on the datasets PVC
+# (copy it there out-of-band the same way you seed the rest of datasets/).
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: prepare-all-dataset
+  namespace: derms-r
+  labels:
+    derms.role: prepare
+spec:
+  backoffLimit: 1
+  template:
+    metadata:
+      labels:
+        derms.role: prepare
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: prepare
+          image: REPLACE_ME_REGISTRY/derms-r-train:ada # either image works; this step is CPU-only
+          command:
+            - python
+            - prepare_dataset.py
+            - --raw_dir=/workspace/datasets/Blood cell Cancer [ALL]
+            - --out_dir=/workspace/datasets/all
+            - --train_name=development
+            - --test_ratio=0.10
+          volumeMounts:
+            - name: datasets
+              mountPath: /workspace/datasets
+          resources:
+            requests: { cpu: "1", memory: "2Gi" }
+            limits: { cpu: "2", memory: "4Gi" }
+      volumes:
+        - name: datasets
+          persistentVolumeClaim:
+            claimName: derms-datasets

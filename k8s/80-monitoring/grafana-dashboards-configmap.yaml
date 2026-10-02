@@ -1,0 +1,184 @@
+# Loaded automatically by kube-prometheus-stack's Grafana sidecar
+# (grafana.sidecar.dashboards.enabled=true, the chart default), which
+# watches for ConfigMaps labeled grafana_dashboard: "1". Same dashboard
+# JSON as ../../monitoring/docker/grafana/dashboards/ -- DCGM and
+# node-exporter expose identical metric names in both deployments, so
+# no query changes were needed.
+#
+# If dashboards don't appear: confirm the chart was installed with
+# --set grafana.sidecar.dashboards.searchNamespace=ALL (or add this
+# namespace to that list), since these ConfigMaps live in derms-r, not
+# wherever kube-prometheus-stack's Grafana pod runs.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: derms-gpu-overview
+  namespace: derms-r
+  labels:
+    grafana_dashboard: '1'
+data:
+  derms-gpu-overview.json: "{\n  \"uid\": \"derms-gpu-overview\",\n  \"title\": \"\
+    DERMS-R / GPU Overview (DCGM)\",\n  \"tags\": [\n    \"derms-r\",\n    \"gpu\"\
+    ,\n    \"dcgm\"\n  ],\n  \"timezone\": \"browser\",\n  \"schemaVersion\": 39,\n\
+    \  \"version\": 1,\n  \"refresh\": \"15s\",\n  \"time\": {\n    \"from\": \"now-6h\"\
+    ,\n    \"to\": \"now\"\n  },\n  \"panels\": [\n    {\n      \"id\": 1,\n     \
+    \ \"title\": \"GPU Utilization (%)\",\n      \"type\": \"timeseries\",\n     \
+    \ \"datasource\": {\n        \"type\": \"prometheus\",\n        \"uid\": \"prometheus-ds\"\
+    \n      },\n      \"gridPos\": {\n        \"x\": 0,\n        \"y\": 0,\n     \
+    \   \"w\": 12,\n        \"h\": 8\n      },\n      \"fieldConfig\": {\n       \
+    \ \"defaults\": {\n          \"unit\": \"percent\",\n          \"custom\": {\n\
+    \            \"drawStyle\": \"line\",\n            \"lineWidth\": 1,\n       \
+    \     \"fillOpacity\": 15,\n            \"stacking\": {\n              \"mode\"\
+    : \"none\"\n            },\n            \"pointSize\": 3\n          }\n      \
+    \  },\n        \"overrides\": []\n      },\n      \"targets\": [\n        {\n\
+    \          \"expr\": \"DCGM_FI_DEV_GPU_UTIL\",\n          \"legendFormat\": \"\
+    {{Hostname}} GPU{{gpu}} ({{modelName}})\",\n          \"refId\": \"A\"\n     \
+    \   }\n      ]\n    },\n    {\n      \"id\": 2,\n      \"title\": \"GPU Memory\
+    \ Used (MiB)\",\n      \"type\": \"timeseries\",\n      \"datasource\": {\n  \
+    \      \"type\": \"prometheus\",\n        \"uid\": \"prometheus-ds\"\n      },\n\
+    \      \"gridPos\": {\n        \"x\": 12,\n        \"y\": 0,\n        \"w\": 12,\n\
+    \        \"h\": 8\n      },\n      \"fieldConfig\": {\n        \"defaults\": {\n\
+    \          \"unit\": \"decmbytes\",\n          \"custom\": {\n            \"drawStyle\"\
+    : \"line\",\n            \"lineWidth\": 1,\n            \"fillOpacity\": 15,\n\
+    \            \"stacking\": {\n              \"mode\": \"none\"\n            },\n\
+    \            \"pointSize\": 3\n          }\n        },\n        \"overrides\"\
+    : []\n      },\n      \"targets\": [\n        {\n          \"expr\": \"DCGM_FI_DEV_FB_USED\"\
+    ,\n          \"legendFormat\": \"{{Hostname}} GPU{{gpu}} used\",\n          \"\
+    refId\": \"A\"\n        },\n        {\n          \"expr\": \"DCGM_FI_DEV_FB_FREE\"\
+    ,\n          \"legendFormat\": \"{{Hostname}} GPU{{gpu}} free\",\n          \"\
+    refId\": \"B\"\n        }\n      ]\n    },\n    {\n      \"id\": 3,\n      \"\
+    title\": \"GPU Temperature (C)\",\n      \"type\": \"timeseries\",\n      \"datasource\"\
+    : {\n        \"type\": \"prometheus\",\n        \"uid\": \"prometheus-ds\"\n \
+    \     },\n      \"gridPos\": {\n        \"x\": 0,\n        \"y\": 8,\n       \
+    \ \"w\": 12,\n        \"h\": 8\n      },\n      \"fieldConfig\": {\n        \"\
+    defaults\": {\n          \"unit\": \"celsius\",\n          \"custom\": {\n   \
+    \         \"drawStyle\": \"line\",\n            \"lineWidth\": 1,\n          \
+    \  \"fillOpacity\": 15,\n            \"stacking\": {\n              \"mode\":\
+    \ \"none\"\n            },\n            \"pointSize\": 3\n          }\n      \
+    \  },\n        \"overrides\": []\n      },\n      \"targets\": [\n        {\n\
+    \          \"expr\": \"DCGM_FI_DEV_GPU_TEMP\",\n          \"legendFormat\": \"\
+    {{Hostname}} GPU{{gpu}} ({{modelName}})\",\n          \"refId\": \"A\"\n     \
+    \   }\n      ]\n    },\n    {\n      \"id\": 4,\n      \"title\": \"GPU Power\
+    \ Usage (W)\",\n      \"type\": \"timeseries\",\n      \"datasource\": {\n   \
+    \     \"type\": \"prometheus\",\n        \"uid\": \"prometheus-ds\"\n      },\n\
+    \      \"gridPos\": {\n        \"x\": 12,\n        \"y\": 8,\n        \"w\": 12,\n\
+    \        \"h\": 8\n      },\n      \"fieldConfig\": {\n        \"defaults\": {\n\
+    \          \"unit\": \"watt\",\n          \"custom\": {\n            \"drawStyle\"\
+    : \"line\",\n            \"lineWidth\": 1,\n            \"fillOpacity\": 15,\n\
+    \            \"stacking\": {\n              \"mode\": \"none\"\n            },\n\
+    \            \"pointSize\": 3\n          }\n        },\n        \"overrides\"\
+    : []\n      },\n      \"targets\": [\n        {\n          \"expr\": \"DCGM_FI_DEV_POWER_USAGE\"\
+    ,\n          \"legendFormat\": \"{{Hostname}} GPU{{gpu}} ({{modelName}})\",\n\
+    \          \"refId\": \"A\"\n        }\n      ]\n    },\n    {\n      \"id\":\
+    \ 5,\n      \"title\": \"SM Clock (MHz)\",\n      \"type\": \"timeseries\",\n\
+    \      \"datasource\": {\n        \"type\": \"prometheus\",\n        \"uid\":\
+    \ \"prometheus-ds\"\n      },\n      \"gridPos\": {\n        \"x\": 0,\n     \
+    \   \"y\": 16,\n        \"w\": 12,\n        \"h\": 8\n      },\n      \"fieldConfig\"\
+    : {\n        \"defaults\": {\n          \"unit\": \"short\",\n          \"custom\"\
+    : {\n            \"drawStyle\": \"line\",\n            \"lineWidth\": 1,\n   \
+    \         \"fillOpacity\": 15,\n            \"stacking\": {\n              \"\
+    mode\": \"none\"\n            },\n            \"pointSize\": 3\n          }\n\
+    \        },\n        \"overrides\": []\n      },\n      \"targets\": [\n     \
+    \   {\n          \"expr\": \"DCGM_FI_DEV_SM_CLOCK\",\n          \"legendFormat\"\
+    : \"{{Hostname}} GPU{{gpu}} ({{modelName}})\",\n          \"refId\": \"A\"\n \
+    \       }\n      ]\n    },\n    {\n      \"id\": 6,\n      \"title\": \"Memory\
+    \ Copy Utilization (%)\",\n      \"type\": \"timeseries\",\n      \"datasource\"\
+    : {\n        \"type\": \"prometheus\",\n        \"uid\": \"prometheus-ds\"\n \
+    \     },\n      \"gridPos\": {\n        \"x\": 12,\n        \"y\": 16,\n     \
+    \   \"w\": 12,\n        \"h\": 8\n      },\n      \"fieldConfig\": {\n       \
+    \ \"defaults\": {\n          \"unit\": \"percent\",\n          \"custom\": {\n\
+    \            \"drawStyle\": \"line\",\n            \"lineWidth\": 1,\n       \
+    \     \"fillOpacity\": 15,\n            \"stacking\": {\n              \"mode\"\
+    : \"none\"\n            },\n            \"pointSize\": 3\n          }\n      \
+    \  },\n        \"overrides\": []\n      },\n      \"targets\": [\n        {\n\
+    \          \"expr\": \"DCGM_FI_DEV_MEM_COPY_UTIL\",\n          \"legendFormat\"\
+    : \"{{Hostname}} GPU{{gpu}} ({{modelName}})\",\n          \"refId\": \"A\"\n \
+    \       }\n      ]\n    }\n  ]\n}"
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: derms-host-system
+  namespace: derms-r
+  labels:
+    grafana_dashboard: '1'
+data:
+  derms-host-system.json: "{\n  \"uid\": \"derms-host-system\",\n  \"title\": \"DERMS-R\
+    \ / Host System\",\n  \"tags\": [\n    \"derms-r\",\n    \"system\",\n    \"node-exporter\"\
+    \n  ],\n  \"timezone\": \"browser\",\n  \"schemaVersion\": 39,\n  \"version\"\
+    : 1,\n  \"refresh\": \"15s\",\n  \"time\": {\n    \"from\": \"now-6h\",\n    \"\
+    to\": \"now\"\n  },\n  \"panels\": [\n    {\n      \"id\": 1,\n      \"title\"\
+    : \"CPU Usage (%)\",\n      \"type\": \"timeseries\",\n      \"datasource\": {\n\
+    \        \"type\": \"prometheus\",\n        \"uid\": \"prometheus-ds\"\n     \
+    \ },\n      \"gridPos\": {\n        \"x\": 0,\n        \"y\": 0,\n        \"w\"\
+    : 12,\n        \"h\": 8\n      },\n      \"fieldConfig\": {\n        \"defaults\"\
+    : {\n          \"unit\": \"percent\",\n          \"custom\": {\n            \"\
+    drawStyle\": \"line\",\n            \"lineWidth\": 1,\n            \"fillOpacity\"\
+    : 15,\n            \"stacking\": {\n              \"mode\": \"none\"\n       \
+    \     },\n            \"pointSize\": 3\n          }\n        },\n        \"overrides\"\
+    : []\n      },\n      \"targets\": [\n        {\n          \"expr\": \"100 - (avg\
+    \ by (instance) (rate(node_cpu_seconds_total{mode=\\\"idle\\\"}[5m])) * 100)\"\
+    ,\n          \"legendFormat\": \"{{instance}}\",\n          \"refId\": \"A\"\n\
+    \        }\n      ]\n    },\n    {\n      \"id\": 2,\n      \"title\": \"Memory\
+    \ Usage (%)\",\n      \"type\": \"timeseries\",\n      \"datasource\": {\n   \
+    \     \"type\": \"prometheus\",\n        \"uid\": \"prometheus-ds\"\n      },\n\
+    \      \"gridPos\": {\n        \"x\": 12,\n        \"y\": 0,\n        \"w\": 12,\n\
+    \        \"h\": 8\n      },\n      \"fieldConfig\": {\n        \"defaults\": {\n\
+    \          \"unit\": \"percent\",\n          \"custom\": {\n            \"drawStyle\"\
+    : \"line\",\n            \"lineWidth\": 1,\n            \"fillOpacity\": 15,\n\
+    \            \"stacking\": {\n              \"mode\": \"none\"\n            },\n\
+    \            \"pointSize\": 3\n          }\n        },\n        \"overrides\"\
+    : []\n      },\n      \"targets\": [\n        {\n          \"expr\": \"(1 - (node_memory_MemAvailable_bytes\
+    \ / node_memory_MemTotal_bytes)) * 100\",\n          \"legendFormat\": \"{{instance}}\"\
+    ,\n          \"refId\": \"A\"\n        }\n      ]\n    },\n    {\n      \"id\"\
+    : 3,\n      \"title\": \"Disk Usage (%)\",\n      \"type\": \"timeseries\",\n\
+    \      \"datasource\": {\n        \"type\": \"prometheus\",\n        \"uid\":\
+    \ \"prometheus-ds\"\n      },\n      \"gridPos\": {\n        \"x\": 0,\n     \
+    \   \"y\": 8,\n        \"w\": 12,\n        \"h\": 8\n      },\n      \"fieldConfig\"\
+    : {\n        \"defaults\": {\n          \"unit\": \"percent\",\n          \"custom\"\
+    : {\n            \"drawStyle\": \"line\",\n            \"lineWidth\": 1,\n   \
+    \         \"fillOpacity\": 15,\n            \"stacking\": {\n              \"\
+    mode\": \"none\"\n            },\n            \"pointSize\": 3\n          }\n\
+    \        },\n        \"overrides\": []\n      },\n      \"targets\": [\n     \
+    \   {\n          \"expr\": \"(1 - (node_filesystem_avail_bytes{fstype!=\\\"tmpfs\\\
+    \"} / node_filesystem_size_bytes{fstype!=\\\"tmpfs\\\"})) * 100\",\n         \
+    \ \"legendFormat\": \"{{instance}} {{mountpoint}}\",\n          \"refId\": \"\
+    A\"\n        }\n      ]\n    },\n    {\n      \"id\": 4,\n      \"title\": \"\
+    Load Average (1m/5m/15m)\",\n      \"type\": \"timeseries\",\n      \"datasource\"\
+    : {\n        \"type\": \"prometheus\",\n        \"uid\": \"prometheus-ds\"\n \
+    \     },\n      \"gridPos\": {\n        \"x\": 12,\n        \"y\": 8,\n      \
+    \  \"w\": 12,\n        \"h\": 8\n      },\n      \"fieldConfig\": {\n        \"\
+    defaults\": {\n          \"unit\": \"short\",\n          \"custom\": {\n     \
+    \       \"drawStyle\": \"line\",\n            \"lineWidth\": 1,\n            \"\
+    fillOpacity\": 15,\n            \"stacking\": {\n              \"mode\": \"none\"\
+    \n            },\n            \"pointSize\": 3\n          }\n        },\n    \
+    \    \"overrides\": []\n      },\n      \"targets\": [\n        {\n          \"\
+    expr\": \"node_load1\",\n          \"legendFormat\": \"{{instance}} 1m\",\n  \
+    \        \"refId\": \"A\"\n        },\n        {\n          \"expr\": \"node_load5\"\
+    ,\n          \"legendFormat\": \"{{instance}} 5m\",\n          \"refId\": \"B\"\
+    \n        },\n        {\n          \"expr\": \"node_load15\",\n          \"legendFormat\"\
+    : \"{{instance}} 15m\",\n          \"refId\": \"C\"\n        }\n      ]\n    },\n\
+    \    {\n      \"id\": 5,\n      \"title\": \"Network Receive (bytes/s)\",\n  \
+    \    \"type\": \"timeseries\",\n      \"datasource\": {\n        \"type\": \"\
+    prometheus\",\n        \"uid\": \"prometheus-ds\"\n      },\n      \"gridPos\"\
+    : {\n        \"x\": 0,\n        \"y\": 16,\n        \"w\": 12,\n        \"h\"\
+    : 8\n      },\n      \"fieldConfig\": {\n        \"defaults\": {\n          \"\
+    unit\": \"Bps\",\n          \"custom\": {\n            \"drawStyle\": \"line\"\
+    ,\n            \"lineWidth\": 1,\n            \"fillOpacity\": 15,\n         \
+    \   \"stacking\": {\n              \"mode\": \"none\"\n            },\n      \
+    \      \"pointSize\": 3\n          }\n        },\n        \"overrides\": []\n\
+    \      },\n      \"targets\": [\n        {\n          \"expr\": \"rate(node_network_receive_bytes_total{device!=\\\
+    \"lo\\\"}[5m])\",\n          \"legendFormat\": \"{{instance}} {{device}} rx\"\
+    ,\n          \"refId\": \"A\"\n        }\n      ]\n    },\n    {\n      \"id\"\
+    : 6,\n      \"title\": \"Network Transmit (bytes/s)\",\n      \"type\": \"timeseries\"\
+    ,\n      \"datasource\": {\n        \"type\": \"prometheus\",\n        \"uid\"\
+    : \"prometheus-ds\"\n      },\n      \"gridPos\": {\n        \"x\": 12,\n    \
+    \    \"y\": 16,\n        \"w\": 12,\n        \"h\": 8\n      },\n      \"fieldConfig\"\
+    : {\n        \"defaults\": {\n          \"unit\": \"Bps\",\n          \"custom\"\
+    : {\n            \"drawStyle\": \"line\",\n            \"lineWidth\": 1,\n   \
+    \         \"fillOpacity\": 15,\n            \"stacking\": {\n              \"\
+    mode\": \"none\"\n            },\n            \"pointSize\": 3\n          }\n\
+    \        },\n        \"overrides\": []\n      },\n      \"targets\": [\n     \
+    \   {\n          \"expr\": \"rate(node_network_transmit_bytes_total{device!=\\\
+    \"lo\\\"}[5m])\",\n          \"legendFormat\": \"{{instance}} {{device}} tx\"\
+    ,\n          \"refId\": \"A\"\n        }\n      ]\n    }\n  ]\n}"

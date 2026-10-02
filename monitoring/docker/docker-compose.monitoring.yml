@@ -1,0 +1,115 @@
+# GPU + host system monitoring for the Docker deployment. Fully standalone:
+# its own network and containers, no changes to ../../docker-compose.yml or
+# ../../docker-compose.gpu.yml, and no dependency on the orchestrator/mlflow
+# stack being up. Safe to run alongside the existing containers.
+#
+# On a GPU host (same prerequisites as the training image -- NVIDIA driver +
+# NVIDIA Container Toolkit already registered, per the training setup):
+#   docker-compose -f monitoring/docker/docker-compose.monitoring.yml up -d
+#
+# CPU-only host (e.g. the Mac): comment out the dcgm-exporter service below
+# first, or Grafana's GPU dashboard will just show "no data" for that panel.
+#
+# Grafana: http://localhost:3000 (admin / change-me-on-first-login, see
+# GF_SECURITY_ADMIN_PASSWORD below). Prometheus: http://localhost:9090.
+services:
+  dcgm-exporter:
+    image: nvcr.io/nvidia/k8s/dcgm-exporter:3.3.5-3.4.1-ubuntu22.04
+    container_name: derms-dcgm-exporter
+    restart: unless-stopped
+    cap_add:
+      - SYS_ADMIN
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    # If `deploy.resources.reservations.devices` isn't honored by your
+    # docker-compose version outside Swarm, use this instead:
+    #   runtime: nvidia
+    ports:
+      - "9400:9400"
+    networks:
+      - derms-monitoring
+
+  node-exporter:
+    image: prom/node-exporter:v1.8.2
+    container_name: derms-node-exporter
+    restart: unless-stopped
+    pid: host
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/rootfs:ro
+    command:
+      - "--path.procfs=/host/proc"
+      - "--path.sysfs=/host/sys"
+      - "--path.rootfs=/rootfs"
+      - "--collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)"
+    ports:
+      - "9100:9100"
+    networks:
+      - derms-monitoring
+
+  cadvisor:
+    image: gcr.io/cadvisor/cadvisor:v0.49.1
+    container_name: derms-cadvisor
+    restart: unless-stopped
+    privileged: true
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker/:/var/lib/docker:ro
+      - /dev/disk/:/dev/disk:ro
+    ports:
+      - "8081:8080" # host 8081 -> avoid clashing with the orchestrator's 8080
+    networks:
+      - derms-monitoring
+
+  prometheus:
+    image: prom/prometheus:v2.53.0
+    container_name: derms-prometheus
+    restart: unless-stopped
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.retention.time=15d"
+    ports:
+      - "9090:9090"
+    networks:
+      - derms-monitoring
+    depends_on:
+      - dcgm-exporter
+      - node-exporter
+      - cadvisor
+
+  grafana:
+    image: grafana/grafana:11.1.0
+    container_name: derms-grafana
+    restart: unless-stopped
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: change-me-on-first-login
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana-data:/var/lib/grafana
+    ports:
+      - "3000:3000"
+    networks:
+      - derms-monitoring
+    depends_on:
+      - prometheus
+
+networks:
+  derms-monitoring:
+    name: derms-monitoring
+
+volumes:
+  prometheus-data:
+  grafana-data:

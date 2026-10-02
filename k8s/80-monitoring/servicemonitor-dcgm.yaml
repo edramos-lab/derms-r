@@ -1,0 +1,22 @@
+# Requires the Prometheus Operator CRDs, which kube-prometheus-stack installs
+# (see ../80-monitoring/README.md). Tells that stack's Prometheus to scrape
+# the dcgm-exporter Service above.
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: dcgm-exporter
+  namespace: derms-r
+  labels:
+    release: kube-prometheus-stack # must match the Helm release name so the
+    # operator's own ServiceMonitorSelector picks this up -- adjust if you
+    # installed the chart under a different release name.
+spec:
+  selector:
+    matchLabels:
+      app: dcgm-exporter
+  namespaceSelector:
+    matchNames:
+      - derms-r
+  endpoints:
+    - port: metrics
+      interval: 15s

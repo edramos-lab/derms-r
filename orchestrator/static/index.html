@@ -277,6 +277,7 @@
       <nav>
         <button class="nav active" type="button" data-view="dashboard">Dashboard</button>
         <button class="nav" type="button" data-view="configuration">Configuration</button>
+        <button class="nav" type="button" data-view="settings">System Settings</button>
         <button class="nav" type="button" data-view="eda">Exploratory Dataset Analysis</button>
         <button class="nav" type="button" data-view="administration">Audit trail</button>
         <button class="nav" type="button" data-view="users" id="nav-users" hidden>User Management</button>
@@ -303,17 +304,12 @@
         <div id="dash-note" class="banner" hidden></div>
         <div class="stats" id="dash-stats"></div>
         <section class="card">
-          <h2>System</h2>
-          <div class="muted">CPU/RAM/disk are live from the Docker VM (colima) this container runs in — not raw macOS host stats.</div>
-          <div id="system-body" style="margin-top:12px"></div>
-        </section>
-        <section class="card">
           <div class="row">
             <div>
               <h2>Training jobs</h2>
-              <div class="muted">Containers started from Configuration. Metrics go to the separate MLflow container.</div>
+              <div class="muted">Containers started from Configuration. A successful training run is locked and tested against the held-out test split automatically; Lock/Test buttons below are a manual retry if that fails. Metrics go to the separate MLflow container.</div>
             </div>
-            <button class="ghost" id="dash-config" type="button">Open configuration</button>
+            <button class="primary" id="dash-config" type="button">Start Training</button>
           </div>
           <div id="dash-jobs" style="margin-top:12px"></div>
         </section>
@@ -321,6 +317,58 @@
           <h2>Best DERMS-R scores</h2>
           <div class="muted">Read from summary.json files under the results directory.</div>
           <div id="dash-scores" style="margin-top:12px"></div>
+        </section>
+        <section class="card">
+          <h2>System Health</h2>
+          <div class="muted">CPU/RAM/disk are live from the Docker VM (colima) this container runs in — not raw macOS host stats.</div>
+          <div id="system-body" style="margin-top:12px"></div>
+          <div style="margin-top:20px;padding-top:16px;border-top:1px solid rgba(255,255,255,0.06)">
+            <div class="row">
+              <div style="font-size:13px;font-weight:700;color:#fff">GPU Utilization</div>
+              <span class="muted" id="gpu-meta">No GPU telemetry yet.</span>
+            </div>
+            <canvas id="gpu-chart" width="760" height="160" style="width:100%;height:160px;margin-top:12px;background:#0d1117;border-radius:6px"></canvas>
+            <div id="gpu-readout" class="muted" style="margin-top:8px"></div>
+          </div>
+        </section>
+      </div>
+
+      <div id="view-settings" class="content view" hidden>
+        <section class="card">
+          <h2>Nightly Training Window</h2>
+          <div class="muted">Jobs with the Scheduling toggle (Configuration tab) on are restricted to this window: queued outside it, auto-started at the open time, and auto-paused at the close time from the last checkpoint. Saved settings persist across tabs and reloads.</div>
+          <div class="row" style="margin-top:14px;flex-wrap:wrap;gap:24px;justify-content:flex-start">
+            <div>
+              <div class="k">Training window start</div>
+              <select id="window-start-hour"></select>
+              <label class="checkline"><input type="radio" name="window-start-period" value="AM"> AM</label>
+              <label class="checkline"><input type="radio" name="window-start-period" value="PM"> PM</label>
+            </div>
+            <div>
+              <div class="k">Training window end</div>
+              <select id="window-end-hour"></select>
+              <label class="checkline"><input type="radio" name="window-end-period" value="AM"> AM</label>
+              <label class="checkline"><input type="radio" name="window-end-period" value="PM"> PM</label>
+            </div>
+          </div>
+        </section>
+        <section class="card">
+          <h2>GPU Temperature Alerts</h2>
+          <div class="muted">Emails recipients when a GPU crosses the threshold, repeating no more often than the interval below.</div>
+          <div class="field" style="margin-top:14px;max-width:420px">
+            <label class="k">Alert threshold (&deg;C)</label>
+            <input id="gpu-threshold" type="number" step="1" min="1">
+          </div>
+          <div class="field" style="margin-top:14px;max-width:420px">
+            <label class="k">Alert repeat interval (minutes)</label>
+            <input id="gpu-alert-interval" type="number" step="1" min="1">
+          </div>
+          <div class="field" style="margin-top:14px;max-width:420px">
+            <label class="k">Alert recipient emails</label>
+            <input id="gpu-alert-emails" type="text" placeholder="name@example.com, teammate@example.com">
+          </div>
+          <button class="primary" id="save-system-settings" type="button" style="margin-top:14px">Save Settings</button>
+          <span class="muted" id="system-settings-status" style="margin-left:10px"></span>
         </section>
       </div>
 
@@ -434,13 +482,27 @@
         <section class="card">
           <div class="row">
             <div>
-              <h2>Email Notification on Completion</h2>
-              <div class="muted">The address is stored on the job. This orchestrator does not send mail.</div>
+              <h2>Email Notifications</h2>
+              <div class="muted">Sent on completion, and on schedule changes (queued/paused/resumed) for window-restricted jobs.</div>
             </div>
           </div>
           <div class="field" style="margin-top:14px;max-width:420px">
-            <label class="k">Recipient Email</label>
-            <input id="email" type="email" placeholder="name@example.com">
+            <label class="k">Recipient Emails</label>
+            <input id="email" type="text" placeholder="name@example.com, teammate@example.com">
+            <div class="muted" style="margin-top:6px">Separate multiple addresses with commas, semicolons, or spaces.</div>
+          </div>
+        </section>
+
+        <section class="card">
+          <div class="row">
+            <div>
+              <h2>Scheduling</h2>
+              <div class="muted" id="window-status">Nightly operating window: 20:00-08:00</div>
+            </div>
+          </div>
+          <div class="field" style="margin-top:14px">
+            <label class="checkline"><input id="window-toggle" type="checkbox"> Restrict to the 20:00-08:00 window</label>
+            <div class="muted" style="margin-top:6px">Outside the window, the job is queued and starts automatically at 20:00. A running job is stopped at 08:00 and resumes automatically at 20:00 from its last checkpointed epoch.</div>
           </div>
         </section>
 
@@ -516,10 +578,14 @@
     </div>
   </div>
   <script>
-    const state = { mode: "fixed", view: "dashboard", status: null, selectedJob: null, timer: null, jobs: [], user: null };
+    const state = {
+      mode: "fixed", view: "dashboard", status: null, selectedJob: null, timer: null, jobs: [], user: null,
+      trainingDefaultsLoaded: false, gpuHistory: [],
+    };
     const TITLES = {
       dashboard: "Dashboard",
       configuration: "Training Configuration",
+      settings: "System Settings",
       eda: "Exploratory Dataset Analysis",
       administration: "Audit trail",
       users: "User Management",
@@ -527,6 +593,13 @@
 
     function checked(name) {
       return [...document.querySelectorAll(`input[name="${name}"]:checked`)].map(el => el.value);
+    }
+
+    function formatDateTime(iso) {
+      if (!iso) return "—";
+      const date = new Date(iso);
+      if (Number.isNaN(date.getTime())) return iso;
+      return date.toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
     }
 
     function payload(action) {
@@ -545,7 +618,8 @@
         pretrained: document.getElementById("pretrained").checked,
         mlflow_experiment: document.getElementById("experiment").value.trim(),
         mlflow_artifacts: document.getElementById("artifacts").checked,
-        notify_email: document.getElementById("email").value.trim(),
+        notify_emails: document.getElementById("email").value.trim(),
+        window: document.getElementById("window-toggle").checked,
       };
       if (body.mode === "fixed") {
         body.batch_size = Number(document.getElementById("batch").value);
@@ -691,6 +765,11 @@
       renderMLflow();
       updateMlflowLink();
       updateComboNote();
+      const windowEl = document.getElementById("window-status");
+      if (windowEl && state.status.window_hours) {
+        const openNow = state.status.window_open ? "open now" : "closed now - scheduled jobs will queue";
+        windowEl.textContent = `Nightly operating window: ${state.status.window_hours} (${openNow})`;
+      }
     }
 
     function setMode(mode) {
@@ -737,13 +816,15 @@
         const title = document.createElement("div");
         title.className = "row";
         const left = document.createElement("strong");
-        left.textContent = `${job.action} · ${job.label} · ${job.state}`;
+        const windowHours = (state.status && state.status.window_hours) || "";
+        const windowTag = job.window ? ` · scheduled (${windowHours})` : "";
+        left.textContent = `${formatDateTime(job.created_at)} · ${job.action} · ${job.label} · ${job.state}${windowTag}`;
         title.append(left);
-        if (job.state === "running" || job.state === "created") {
+        if (job.state === "running" || job.state === "created" || job.state === "queued") {
           const stop = document.createElement("button");
           stop.className = "ghost";
           stop.type = "button";
-          stop.textContent = "Stop";
+          stop.textContent = job.state === "queued" ? "Cancel" : "Stop";
           stop.onclick = async () => {
             await fetch(`/api/jobs/${job.id}/stop`, { method: "POST" });
             await refreshJobs();
@@ -762,6 +843,54 @@
           track.className = "muted";
           track.textContent = job.tracking_uri;
           card.append(track);
+        }
+        if (job.lock_status && job.lock_status.length) {
+          const lockRow = document.createElement("div");
+          lockRow.className = "inline";
+          lockRow.style.marginTop = "8px";
+          for (const row of job.lock_status) {
+            const label = document.createElement("span");
+            label.className = "muted";
+            label.textContent = `${row.dataset}: `;
+            lockRow.append(label);
+            if (!row.locked) {
+              const lockBtn = document.createElement("button");
+              lockBtn.className = "ghost";
+              lockBtn.type = "button";
+              lockBtn.textContent = `Lock ${row.dataset}`;
+              lockBtn.onclick = async () => {
+                const response = await fetch(`/api/jobs/${job.id}/lock`, {
+                  method: "POST", headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ dataset: row.dataset }),
+                });
+                const data = await response.json();
+                banner(response.ok ? `Lock started for ${row.dataset}.` : (data.error || "Lock failed."), response.ok ? "ok" : "bad");
+                await refreshJobs();
+              };
+              lockRow.append(lockBtn);
+            } else if (!row.tested) {
+              const testBtn = document.createElement("button");
+              testBtn.className = "ghost";
+              testBtn.type = "button";
+              testBtn.textContent = `Test ${row.dataset}`;
+              testBtn.onclick = async () => {
+                const response = await fetch(`/api/jobs/${job.id}/test`, {
+                  method: "POST", headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ dataset: row.dataset }),
+                });
+                const data = await response.json();
+                banner(response.ok ? `Test started for ${row.dataset}.` : (data.error || "Test failed."), response.ok ? "ok" : "bad");
+                await refreshJobs();
+              };
+              lockRow.append(testBtn);
+            } else {
+              const done = document.createElement("span");
+              done.className = "muted";
+              done.textContent = "locked + tested";
+              lockRow.append(done);
+            }
+          }
+          card.append(lockRow);
         }
         if (job.error) {
           const err = document.createElement("div");
@@ -803,6 +932,7 @@
       document.title = TITLES[name];
       if (location.hash !== "#" + name) history.replaceState(null, "", "#" + name);
       if (name === "dashboard") renderDashboard();
+      if (name === "settings") loadSystemSettings();
       if (name === "eda") loadEda();
       if (name === "administration") renderAdmin();
       if (name === "users") renderUsers();
@@ -909,11 +1039,11 @@
         jobs.append(empty);
       } else {
         const table = document.createElement("table");
-        table.innerHTML = "<thead><tr><th>When</th><th>Action</th><th>State</th><th>Datasets</th><th>Device</th></tr></thead>";
+        table.innerHTML = "<thead><tr><th>Date &amp; Time</th><th>Action</th><th>State</th><th>Datasets</th><th>Device</th></tr></thead>";
         const body = document.createElement("tbody");
         for (const job of state.jobs.slice(0, 8)) {
           const row = document.createElement("tr");
-          for (const value of [job.created_at || "", job.action, job.state, (job.datasets || []).join(", "), job.device]) {
+          for (const value of [formatDateTime(job.created_at), job.action, job.state, (job.datasets || []).join(", "), job.device]) {
             const cell = document.createElement("td");
             cell.textContent = value;
             row.append(cell);
@@ -923,15 +1053,120 @@
         table.append(body);
         jobs.append(table);
       }
-      if (!state.scores) {
-        fetch("/api/scores").then(response => response.json()).then(data => {
-          state.scores = data.scores || [];
-          renderScores();
-        }).catch(() => renderScores());
-      } else {
+      fetch("/api/scores").then(response => response.json()).then(data => {
+        state.scores = data.scores || [];
         renderScores();
-      }
+      }).catch(() => renderScores());
       loadSystem();
+      refreshGpu();
+    }
+
+    function populateHourSelect(select) {
+      select.innerHTML = "";
+      for (let h = 1; h <= 12; h++) {
+        const option = document.createElement("option");
+        option.value = String(h);
+        option.textContent = String(h);
+        select.append(option);
+      }
+    }
+
+    function setHour12(selectId, radioName, hour24) {
+      const period = hour24 < 12 ? "AM" : "PM";
+      const h12 = hour24 % 12 || 12;
+      document.getElementById(selectId).value = String(h12);
+      const radio = document.querySelector(`input[name="${radioName}"][value="${period}"]`);
+      if (radio) radio.checked = true;
+    }
+
+    function getHour24(selectId, radioName) {
+      const h12 = Number(document.getElementById(selectId).value);
+      const period = (document.querySelector(`input[name="${radioName}"]:checked`) || {}).value || "AM";
+      let hour = h12 % 12;
+      if (period === "PM") hour += 12;
+      return hour;
+    }
+
+    async function loadSystemSettings() {
+      populateHourSelect(document.getElementById("window-start-hour"));
+      populateHourSelect(document.getElementById("window-end-hour"));
+      const response = await fetch("/api/settings");
+      const data = await response.json();
+      setHour12("window-start-hour", "window-start-period", data.window_start_hour);
+      setHour12("window-end-hour", "window-end-period", data.window_end_hour);
+      document.getElementById("gpu-threshold").value = data.gpu_temp_threshold_c;
+      document.getElementById("gpu-alert-interval").value = data.gpu_alert_interval_minutes;
+      document.getElementById("gpu-alert-emails").value = (data.gpu_alert_emails || []).join(", ");
+    }
+
+    async function saveSystemSettings() {
+      const payload = {
+        window_start_hour: getHour24("window-start-hour", "window-start-period"),
+        window_end_hour: getHour24("window-end-hour", "window-end-period"),
+        gpu_temp_threshold_c: Number(document.getElementById("gpu-threshold").value),
+        gpu_alert_interval_minutes: Number(document.getElementById("gpu-alert-interval").value),
+        gpu_alert_emails: document.getElementById("gpu-alert-emails").value.trim(),
+      };
+      const response = await fetch("/api/settings", {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload),
+      });
+      const data = await response.json();
+      const status = document.getElementById("system-settings-status");
+      if (!response.ok) {
+        status.textContent = data.error || "Failed to save.";
+        status.style.color = "#ffb4a2";
+      } else {
+        status.textContent = "Saved.";
+        status.style.color = "";
+        await refreshStatus();
+      }
+    }
+
+    function drawGpuChart(history) {
+      const canvas = document.getElementById("gpu-chart");
+      const ctx = canvas.getContext("2d");
+      const width = canvas.width, height = canvas.height;
+      ctx.clearRect(0, 0, width, height);
+      ctx.strokeStyle = "#2a3542";
+      ctx.lineWidth = 1;
+      for (let i = 0; i <= 4; i++) {
+        const y = (height / 4) * i;
+        ctx.beginPath();
+        ctx.moveTo(0, y);
+        ctx.lineTo(width, y);
+        ctx.stroke();
+      }
+      if (!history.length) return;
+      const points = history.slice(-120);
+      const step = width / Math.max(points.length - 1, 1);
+      ctx.strokeStyle = "#2a78d6";
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      points.forEach((sample, i) => {
+        const x = i * step;
+        const y = height - (Math.max(0, Math.min(100, sample.gpu_percent)) / 100) * height;
+        if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+      });
+      ctx.stroke();
+    }
+
+    async function refreshGpu() {
+      const response = await fetch("/api/gpu");
+      const data = await response.json();
+      const meta = document.getElementById("gpu-meta");
+      const readout = document.getElementById("gpu-readout");
+      if (!data.current) {
+        meta.textContent = "No GPU telemetry available (no NVIDIA runtime reachable from this container).";
+        readout.textContent = "";
+        drawGpuChart([]);
+        return;
+      }
+      const c = data.current;
+      meta.textContent = `Live, updated every ${15}s`;
+      readout.textContent =
+        `${c.gpu_percent}% utilization · ${c.temperature_c}°C · ${c.power_watts} W · ` +
+        `${Math.round(c.memory_used_mb)}/${Math.round(c.memory_total_mb)} MB`;
+      drawGpuChart(data.history || []);
     }
 
     function meterRow(label, percent, detail) {
@@ -1014,11 +1249,20 @@
         return;
       }
       const table = document.createElement("table");
-      table.innerHTML = "<thead><tr><th>Dataset</th><th>Architecture</th><th>Ratio</th><th>DERMS-R</th></tr></thead>";
+      table.innerHTML = "<thead><tr><th>Dataset</th><th>Architecture</th><th>Ratio</th><th>Mean Val Accuracy</th><th>Std Dev</th><th>Params</th><th>DERMS-R</th></tr></thead>";
       const body = document.createElement("tbody");
       for (const score of scores) {
         const row = document.createElement("tr");
-        for (const value of [score.dataset, score.model, score.ratio, Number(score.derms_r).toFixed(4)]) {
+        const values = [
+          score.dataset,
+          score.model,
+          score.ratio,
+          score.mean_val_accuracy == null ? null : Number(score.mean_val_accuracy).toFixed(4),
+          score.std_val_accuracy == null ? null : Number(score.std_val_accuracy).toFixed(4),
+          score.num_parameters == null ? null : Number(score.num_parameters).toLocaleString(),
+          Number(score.derms_r).toFixed(4),
+        ];
+        for (const value of values) {
           const cell = document.createElement("td");
           cell.textContent = value == null ? "" : String(value);
           row.append(cell);
@@ -1513,17 +1757,19 @@
         return;
       }
       const log = document.createElement("table");
-      log.innerHTML = "<thead><tr><th>When</th><th>Action</th><th>State</th><th>Datasets</th><th>Models</th><th>Email</th></tr></thead>";
+      log.innerHTML = "<thead><tr><th>Date &amp; Time</th><th>Action</th><th>State</th><th>Datasets</th><th>Models</th><th>Email</th></tr></thead>";
       const logBody = document.createElement("tbody");
       for (const job of state.jobs) {
         const line = document.createElement("tr");
         const values = [
-          job.created_at || "",
+          formatDateTime(job.created_at),
           job.action,
           job.state,
           (job.datasets || []).join(", "),
           (job.models || []).join(", "),
-          job.notify_email ? `${job.notify_email} (not sent)` : "",
+          (job.notify_emails || []).length
+            ? `${job.notify_emails.join(", ")} (${job.mail_delivery || "pending"})`
+            : "",
         ];
         for (const value of values) {
           const cell = document.createElement("td");
@@ -1603,6 +1849,7 @@
       for (const input of document.querySelectorAll('input[name="ratio-highlight"]')) input.checked = false;
     };
     document.getElementById("dash-config").onclick = () => showView("configuration");
+    document.getElementById("save-system-settings").onclick = () => { saveSystemSettings().catch(() => {}); };
     document.getElementById("eda-scan").onclick = () => loadEda();
     for (const button of document.querySelectorAll("[data-view]")) {
       button.onclick = () => showView(button.dataset.view);
@@ -1662,12 +1909,64 @@
       document.getElementById("cp-confirm").value = "";
     }
 
+    function applyTrainingDefaults(saved) {
+      if (!saved || typeof saved !== "object") return;
+      if (Array.isArray(saved.datasets)) {
+        for (const el of document.querySelectorAll('input[name="dataset"]')) el.checked = saved.datasets.includes(el.value);
+      }
+      if (Array.isArray(saved.models)) {
+        for (const el of document.querySelectorAll('input[name="model"]')) el.checked = saved.models.includes(el.value);
+      }
+      const setValue = (id, value) => { if (value != null) document.getElementById(id).value = value; };
+      const setChecked = (id, value) => { if (value != null) document.getElementById(id).checked = value; };
+      if (saved.device) setValue("device", saved.device);
+      if (saved.deployment) setValue("deployment", saved.deployment);
+      if (saved.mode) setMode(saved.mode);
+      setValue("seed", saved.seed);
+      setValue("holdout", saved.holdout);
+      setChecked("augmentation", saved.augmentation);
+      setChecked("pretrained", saved.pretrained);
+      if (saved.mlflow_experiment) setValue("experiment", saved.mlflow_experiment);
+      setChecked("artifacts", saved.mlflow_artifacts);
+      if (saved.notify_emails) setValue("email", saved.notify_emails);
+      setChecked("window-toggle", saved.window);
+      setValue("batch", saved.batch_size);
+      setValue("epochs", saved.epochs);
+      setValue("lr", saved.lr);
+      setValue("wd", saved.weight_decay);
+      updateComboNote();
+    }
+
+    async function loadTrainingDefaults() {
+      const response = await fetch("/api/settings");
+      const data = await response.json();
+      applyTrainingDefaults(data.training_defaults);
+      state.trainingDefaultsLoaded = true;
+    }
+
+    let trainingDefaultsSaveTimer = null;
+    function scheduleTrainingDefaultsSave() {
+      if (!state.trainingDefaultsLoaded) return;
+      clearTimeout(trainingDefaultsSaveTimer);
+      trainingDefaultsSaveTimer = setTimeout(() => {
+        const snapshot = payload("train");
+        delete snapshot.action;
+        fetch("/api/settings", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ training_defaults: snapshot }),
+        }).catch(() => {});
+      }, 800);
+    }
+
     function boot() {
-      refreshStatus().then(refreshJobs).then(() => {
+      refreshStatus().then(() => loadTrainingDefaults().catch(() => {})).then(refreshJobs).then(() => {
         const initial = (location.hash || "#dashboard").slice(1);
         showView(TITLES[initial] ? initial : "dashboard");
       }).catch(error => { if (String(error) !== "Error: unauthenticated") banner(String(error), "bad"); });
       state.timer = setInterval(() => { refreshJobs().catch(() => {}); }, 3000);
+      const configView = document.getElementById("view-configuration");
+      configView.addEventListener("input", scheduleTrainingDefaultsSave);
+      configView.addEventListener("change", scheduleTrainingDefaultsSave);
     }
 
     async function doLogin() {

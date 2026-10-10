@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>RIGAL-AI</title>
   <script src="https://cdn.plot.ly/plotly-2.35.2.min.js" charset="utf-8"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
   <style>
     * { box-sizing: border-box; }
     /* The `hidden` attribute must always win, even over elements whose class
@@ -114,10 +115,11 @@
     .sub { font-size: 11px; color: #8b8fa3; font-weight: 500; }
     .linkish { color: #5b9cf5; font-size: 11px; font-weight: 600; background: none; border: none; cursor: pointer; padding: 0; }
     .foot { margin-top: 8px; display: flex; justify-content: space-between; align-items: center; }
-    select, input[type="number"], input[type="text"], input[type="email"], input[type="password"] {
+    select, input[type="number"], input[type="text"], input[type="email"], input[type="password"], input[type="date"] {
       background: #12141c; border: 1px solid rgba(255,255,255,0.1); border-radius: 7px;
       color: #fff; padding: 8px 12px; font-size: 13px; font-weight: 600;
     }
+    input[type="date"] { color-scheme: dark; }
     .login-screen {
       position: fixed; inset: 0; background: #0f1117; display: flex; align-items: center;
       justify-content: center; z-index: 1000;
@@ -314,8 +316,19 @@
           <div id="dash-jobs" style="margin-top:12px"></div>
         </section>
         <section class="card">
-          <h2>Best DERMS-R scores</h2>
-          <div class="muted">Read from summary.json files under the results directory.</div>
+          <div class="row" style="flex-wrap:wrap;gap:12px">
+            <div>
+              <h2>Best DERMS-R scores</h2>
+              <div class="muted">Read from summary.json files under the results directory.</div>
+            </div>
+            <div class="inline" style="flex-wrap:wrap;gap:10px">
+              <label class="checkline">From <input id="scores-date-from" type="date" style="margin-left:6px"></label>
+              <label class="checkline">To <input id="scores-date-to" type="date" style="margin-left:6px"></label>
+              <button class="linkish" id="scores-date-clear" type="button">Clear</button>
+              <button class="ghost" id="scores-export-csv" type="button">Export CSV</button>
+              <button class="ghost" id="scores-export-xlsx" type="button">Export XLSX</button>
+            </div>
+          </div>
           <div id="dash-scores" style="margin-top:12px"></div>
         </section>
         <section class="card">
@@ -1237,32 +1250,62 @@
       }
     }
 
+    const SCORES_HEADER = ["Date", "Experiment", "Dataset", "Architecture", "Ratio", "Mean Val Accuracy", "Std Dev", "Params", "DERMS-R"];
+
+    function scoreToRow(score) {
+      return [
+        formatDateTime(score.date),
+        score.experiment || "—",
+        score.dataset,
+        score.model,
+        score.ratio,
+        score.mean_val_accuracy == null ? "" : Number(score.mean_val_accuracy).toFixed(4),
+        score.std_val_accuracy == null ? "" : Number(score.std_val_accuracy).toFixed(4),
+        score.num_parameters == null ? "" : Number(score.num_parameters).toLocaleString(),
+        Number(score.derms_r).toFixed(4),
+      ];
+    }
+
+    function filteredScores() {
+      const from = document.getElementById("scores-date-from").value;
+      const to = document.getElementById("scores-date-to").value;
+      let rows = state.scores || [];
+      if (from) {
+        const fromTime = new Date(from + "T00:00:00").getTime();
+        rows = rows.filter(s => s.date && new Date(s.date).getTime() >= fromTime);
+      }
+      if (to) {
+        const toTime = new Date(to + "T23:59:59.999").getTime();
+        rows = rows.filter(s => s.date && new Date(s.date).getTime() <= toTime);
+      }
+      return rows;
+    }
+
     function renderScores() {
       const root = document.getElementById("dash-scores");
       root.innerHTML = "";
-      const scores = state.scores || [];
-      if (!scores.length) {
+      const all = state.scores || [];
+      if (!all.length) {
         const empty = document.createElement("div");
         empty.className = "muted";
         empty.textContent = "No summary.json files yet. Scores appear here after a training run finishes.";
         root.append(empty);
         return;
       }
+      const scores = filteredScores();
+      if (!scores.length) {
+        const empty = document.createElement("div");
+        empty.className = "muted";
+        empty.textContent = "No scores in the selected date range.";
+        root.append(empty);
+        return;
+      }
       const table = document.createElement("table");
-      table.innerHTML = "<thead><tr><th>Dataset</th><th>Architecture</th><th>Ratio</th><th>Mean Val Accuracy</th><th>Std Dev</th><th>Params</th><th>DERMS-R</th></tr></thead>";
+      table.innerHTML = `<thead><tr>${SCORES_HEADER.map(h => `<th>${h}</th>`).join("")}</tr></thead>`;
       const body = document.createElement("tbody");
       for (const score of scores) {
         const row = document.createElement("tr");
-        const values = [
-          score.dataset,
-          score.model,
-          score.ratio,
-          score.mean_val_accuracy == null ? null : Number(score.mean_val_accuracy).toFixed(4),
-          score.std_val_accuracy == null ? null : Number(score.std_val_accuracy).toFixed(4),
-          score.num_parameters == null ? null : Number(score.num_parameters).toLocaleString(),
-          Number(score.derms_r).toFixed(4),
-        ];
-        for (const value of values) {
+        for (const value of scoreToRow(score)) {
           const cell = document.createElement("td");
           cell.textContent = value == null ? "" : String(value);
           row.append(cell);
@@ -1271,6 +1314,39 @@
       }
       table.append(body);
       root.append(table);
+    }
+
+    function downloadBlob(content, filename, mime) {
+      const blob = new Blob([content], { type: mime });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+      document.body.append(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    }
+
+    function exportScoresCsv() {
+      const rows = filteredScores();
+      if (!rows.length) return;
+      const escape = (value) => {
+        const s = value == null ? "" : String(value);
+        return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+      };
+      const lines = [SCORES_HEADER, ...rows.map(scoreToRow)].map(line => line.map(escape).join(","));
+      downloadBlob(lines.join("\r\n"), "derms-r-scores.csv", "text/csv;charset=utf-8;");
+    }
+
+    function exportScoresXlsx() {
+      const rows = filteredScores();
+      if (!rows.length) return;
+      const data = [SCORES_HEADER, ...rows.map(scoreToRow)];
+      const sheet = XLSX.utils.aoa_to_sheet(data);
+      const workbook = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(workbook, sheet, "DERMS-R Scores");
+      XLSX.writeFile(workbook, "derms-r-scores.xlsx");
     }
 
     async function loadEda() {
@@ -1851,6 +1927,15 @@
     document.getElementById("dash-config").onclick = () => showView("configuration");
     document.getElementById("save-system-settings").onclick = () => { saveSystemSettings().catch(() => {}); };
     document.getElementById("eda-scan").onclick = () => loadEda();
+    document.getElementById("scores-date-from").onchange = renderScores;
+    document.getElementById("scores-date-to").onchange = renderScores;
+    document.getElementById("scores-date-clear").onclick = () => {
+      document.getElementById("scores-date-from").value = "";
+      document.getElementById("scores-date-to").value = "";
+      renderScores();
+    };
+    document.getElementById("scores-export-csv").onclick = exportScoresCsv;
+    document.getElementById("scores-export-xlsx").onclick = exportScoresXlsx;
     for (const button of document.querySelectorAll("[data-view]")) {
       button.onclick = () => showView(button.dataset.view);
     }

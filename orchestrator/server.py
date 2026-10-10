@@ -363,7 +363,13 @@ class App:
         return result
 
     def scores(self):
-        return collect_scores(self.settings.visible_results)
+        rows = collect_scores(self.settings.visible_results)
+        with self._lock:
+            experiments = {job["id"]: job.get("mlflow_experiment") for job in self.jobs}
+        for row in rows:
+            job_id = row.pop("job_id", None)
+            row["experiment"] = experiments.get(job_id) or "\u2014"
+        return rows
 
     def list_jobs(self):
         with self._lock:

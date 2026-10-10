@@ -1,6 +1,7 @@
 """Dataset profiles and saved DERMS-R scores for the dashboard and EDA views."""
 import json
 import os
+from datetime import datetime, timezone
 from pathlib import Path
 
 IMAGE_SUFFIXES = {".jpg", ".jpeg", ".png", ".bmp", ".webp", ".tif", ".tiff"}
@@ -126,9 +127,22 @@ def collect_scores(results: Path, limit_files=30):
                     "model": record.get("model"),
                     "ratio": record.get("ratio"),
                     "derms_r": score,
+                    "mean_val_accuracy": record.get("mean_validation_accuracy"),
+                    "std_val_accuracy": record.get("sd_validation_accuracy"),
+                    "num_parameters": record.get("num_parameters"),
                     "source": str(path.parent),
                 }
         if best:
+            try:
+                mtime = path.stat().st_mtime
+                best["date"] = datetime.fromtimestamp(mtime, tz=timezone.utc).isoformat()
+            except OSError:
+                best["date"] = None
+            # Run output lives under <visible_results>/runs/<job_id>/... — pull
+            # job_id out so the caller can look up which job (and therefore
+            # which MLflow experiment) produced this summary.json.
+            parts = path.parts
+            best["job_id"] = parts[parts.index("runs") + 1] if "runs" in parts else None
             rows.append(best)
     rows.sort(key=lambda row: row["derms_r"], reverse=True)
     return rows

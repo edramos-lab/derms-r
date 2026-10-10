@@ -19,6 +19,7 @@ from orchestrator.launcher import (
     parse_runs,
     plan_mlflow,
 )
+from orchestrator.eta import estimate_job_hours
 from orchestrator.server import App
 from orchestrator.survey import collect_scores, profile_dataset
 
@@ -373,6 +374,41 @@ class SurveyTests(unittest.TestCase):
             scores = collect_scores(results)
         self.assertEqual(scores[0]["model"], "vit_base")
         self.assertAlmostEqual(scores[0]["derms_r"], 2.4)
+
+
+class TestEtaEstimate(unittest.TestCase):
+    RUN_COMBOS = 25  # 5 canonical ratios x 5 folds
+
+    def test_uses_direct_history_when_available(self):
+        job = {"models": ["resnet50"], "datasets": ["cifar10"], "epochs": 10}
+        hours = estimate_job_hours(job, history={"resnet50": 2.0}, params_by_model={"resnet50": 25_000_000})
+        self.assertAlmostEqual(hours, 2.0 * 10 * self.RUN_COMBOS / 3600)
+
+    def test_falls_back_to_model_size_scaling(self):
+        job = {"models": ["new_model"], "datasets": ["cifar10"], "epochs": 10}
+        # resnet50 (25M params) is the only run history; new_model (50M, 2x
+        # the size) has no history of its own, so its rate should scale
+        # linearly off resnet50's seconds-per-epoch-per-million-parameters.
+        history = {"resnet50": 2.0}
+        params = {"resnet50": 25_000_000, "new_model": 50_000_000}
+        hours = estimate_job_hours(job, history, params)
+        expected_seconds_per_epoch = (2.0 / 25) * 50
+        self.assertAlmostEqual(hours, expected_seconds_per_epoch * 10 * self.RUN_COMBOS / 3600)
+
+    def test_sums_across_models_and_datasets(self):
+        job = {"models": ["resnet50", "vit_base"], "datasets": ["cifar10", "cifar100"], "epochs": 5}
+        history = {"resnet50": 1.0, "vit_base": 3.0}
+        hours = estimate_job_hours(job, history, params_by_model={})
+        expected_seconds = (1.0 + 3.0) * 5 * 2 * self.RUN_COMBOS
+        self.assertAlmostEqual(hours, expected_seconds / 3600)
+
+    def test_no_history_or_params_returns_none(self):
+        job = {"models": ["mystery_model"], "datasets": ["cifar10"], "epochs": 10}
+        self.assertIsNone(estimate_job_hours(job, history={}, params_by_model={}))
+
+    def test_missing_epochs_returns_none(self):
+        job = {"models": ["resnet50"], "datasets": ["cifar10"], "epochs": 0}
+        self.assertIsNone(estimate_job_hours(job, history={"resnet50": 2.0}, params_by_model={}))
 
 
 if __name__ == "__main__":

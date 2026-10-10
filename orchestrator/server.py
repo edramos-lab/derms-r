@@ -2,6 +2,7 @@
 import json
 import secrets
 import threading
+import time
 from datetime import datetime, timezone
 from http.cookies import SimpleCookie
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -9,6 +10,7 @@ from pathlib import Path
 from urllib.parse import urlparse, parse_qs
 
 from orchestrator.auth import AuthError, AuthStore
+from orchestrator.eta import estimate_job_hours, seconds_per_epoch_by_model
 from orchestrator.launcher import (
     ConfigError,
     Docker,
@@ -47,6 +49,7 @@ class App:
         self._xai_cache_path = self.settings.jobs_dir / "xai_cache.json"
         self._xai_cache = self._read_xai_cache()  # {dataset_id: {section: result}}, persisted to disk
         self.auth = AuthStore(self.settings.jobs_dir / "users.json")
+        self._eta_cache = {"at": 0.0, "history": {}, "params": {}}  # refreshed at most once/minute
 
     def _read_xai_cache(self):
         if not self._xai_cache_path.exists():
@@ -374,7 +377,43 @@ class App:
     def list_jobs(self):
         with self._lock:
             self._refresh_unlocked()
-            return [dict(job) for job in self.jobs]
+            jobs = [dict(job) for job in self.jobs]
+        self._apply_eta(jobs)
+        return jobs
+
+    def _eta_inputs(self):
+        # MLflow REST + the scores scan are both too slow to run on every
+        # 3s dashboard poll, so refresh at most once a minute.
+        now = time.monotonic()
+        if now - self._eta_cache["at"] > 60:
+            history = self._eta_cache["history"]
+            try:
+                plan = self.docker.mlflow_plan(self.settings)
+                history = seconds_per_epoch_by_model(plan.tracking_uri)
+            except DockerError:
+                pass
+            params = self._eta_cache["params"]
+            try:
+                params = {row["model"]: row["num_parameters"] for row in self.scores() if row.get("num_parameters")}
+            except Exception:
+                pass
+            self._eta_cache = {"at": now, "history": history, "params": params}
+        return self._eta_cache["history"], self._eta_cache["params"]
+
+    def _apply_eta(self, jobs):
+        running_train_ids = {j["id"] for j in jobs if j.get("action") == "train" and j.get("state") == "running"}
+        history, params = self._eta_inputs() if running_train_ids else ({}, {})
+        for job in jobs:
+            total_hours = None
+            remaining_hours = None
+            if job["id"] in running_train_ids:
+                total_hours = estimate_job_hours(job, history, params)
+                if total_hours is not None and job.get("started_at"):
+                    started = datetime.fromisoformat(job["started_at"])
+                    elapsed_hours = (datetime.now(timezone.utc) - started).total_seconds() / 3600
+                    remaining_hours = max(total_hours - elapsed_hours, 0.0)
+            job["eta_hours_total"] = total_hours
+            job["eta_hours_remaining"] = remaining_hours
 
     def _refresh_unlocked(self):
         changed = False
@@ -473,6 +512,7 @@ class App:
             try:
                 job["container_id"] = self.docker.run_detached(argv)
                 job["state"] = "running"
+                job["started_at"] = datetime.now(timezone.utc).isoformat()
             except DockerError as error:
                 job["state"] = "failed"
                 job["error"] = str(error)

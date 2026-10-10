@@ -46,7 +46,7 @@
       color: #8b8fa3; font-size: 13px; font-weight: 500; cursor: pointer;
     }
     button.nav.active { background: rgba(42,120,214,0.12); color: #5b9cf5; font-weight: 600; }
-    .stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+    .stats { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 12px; }
     .stat { background: #12141c; border-radius: 8px; padding: 14px; }
     .stat b { display: block; margin-top: 6px; color: #fff; font-size: 18px; }
     table { width: 100%; border-collapse: collapse; font-size: 12px; }
@@ -1005,7 +1005,7 @@
       root.append(table);
     }
 
-    function stat(label, value) {
+    function stat(label, value, detail) {
       const card = document.createElement("div");
       card.className = "stat";
       const k = document.createElement("div");
@@ -1014,7 +1014,29 @@
       const v = document.createElement("b");
       v.textContent = value;
       card.append(k, v);
+      if (detail) {
+        const d = document.createElement("div");
+        d.className = "muted";
+        d.style.cssText = "margin-top:4px;font-size:10px";
+        d.textContent = detail;
+        card.append(d);
+      }
       return card;
+    }
+
+    function etaStat() {
+      const runningTrain = state.jobs.filter(job => job.action === "train" && job.state === "running");
+      if (!runningTrain.length) {
+        return stat("Est. time to complete", "—", "No training running");
+      }
+      const values = runningTrain.map(job => job.eta_hours_remaining).filter(v => v != null);
+      if (!values.length) {
+        return stat("Est. time to complete", "—", "Not enough run history yet");
+      }
+      const maxHours = Math.max(...values);
+      const display = maxHours < 0.05 ? "<0.1h" : `${maxHours.toFixed(1)}h`;
+      const detail = runningTrain.length > 1 ? `${runningTrain.length} jobs running` : "until complete";
+      return stat("Est. time to complete", display, detail);
     }
 
     function renderDashboard() {
@@ -1042,6 +1064,7 @@
         stat("MLflow", mlflow),
         stat("Running jobs", String(running)),
         stat("Datasets on disk", `${onDisk}/${status.datasets.length}`),
+        etaStat(),
       );
       const jobs = document.getElementById("dash-jobs");
       jobs.innerHTML = "";

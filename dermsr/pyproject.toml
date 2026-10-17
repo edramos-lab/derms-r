@@ -1,0 +1,53 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "dermsr"
+version = "0.1.0"
+description = "DERMS-R: a multi-objective score for neural architecture selection (accuracy, data efficiency, complexity, stability)."
+readme = "README.md"
+requires-python = ">=3.9"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [
+    { name = "Edgar Ramos", email = "edgar.rene.ramos.acosta@uabc.edu.mx" },
+]
+keywords = [
+    "machine learning",
+    "model selection",
+    "model evaluation",
+    "data efficiency",
+    "neural architecture search",
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Science/Research",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+dependencies = [
+    "numpy>=1.22",
+    "pandas>=1.4",
+]
+
+[project.optional-dependencies]
+stats = ["scipy>=1.8"]
+dev = ["pytest>=7.0", "scipy>=1.8"]
+
+[project.urls]
+Homepage = "https://github.com/edramos-lab/derms-r"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+dermsr = ["data/*.csv"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests", "src/dermsr"]
+addopts = "--doctest-modules"

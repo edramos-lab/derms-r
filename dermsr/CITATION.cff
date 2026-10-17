@@ -1,0 +1,26 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite both the software and the paper below."
+title: "dermsr: a reference implementation of the DERMS-R model-selection score"
+version: 0.1.0
+date-released: "2026-10-17"
+authors:
+  - family-names: Ramos
+    given-names: Edgar
+    email: edgar.rene.ramos.acosta@uabc.edu.mx
+    affiliation: "Universidad Autónoma de Baja California"
+repository-code: "https://github.com/edramos-lab/derms-r"
+license: MIT
+preferred-citation:
+  type: preprint
+  title: "DERMS-R: A Data-Efficient Robust Model Score for Multi-Objective Evaluation of Deep Learning Architectures"
+  authors:
+    - family-names: Ramos
+      given-names: Edgar
+      email: edgar.rene.ramos.acosta@uabc.edu.mx
+      affiliation: "Universidad Autónoma de Baja California"
+  year: 2026
+  notes: >-
+    Not yet archived with a persistent DOI or accepted at a venue; update
+    this entry (and add a `doi:` field above) once a DOI-archived release
+    is made, per the paper's Reproducibility and Reference Implementation
+    section.

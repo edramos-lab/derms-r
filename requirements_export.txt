@@ -8,3 +8,10 @@ onnxruntime-gpu>=1.18,<2
 # not as a substitute for the CUDA toolkit / TensorRT packages on the machine:
 #   tensorrt>=8.6
 #   pycuda>=2024.1
+
+# derms/inference_server.py: the inference-api compose service runs this same
+# image with `uvicorn derms.inference_server:app`, so these need to be in the
+# one image both training and inference serving share.
+fastapi>=0.110,<1
+uvicorn[standard]>=0.29,<1
+python-multipart>=0.0.9,<1

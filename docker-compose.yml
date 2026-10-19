@@ -17,6 +17,7 @@ services:
       - ./datasets:/data/datasets:ro
       - ./results:/data/results
       - ./hf-cache:/data/hf-cache
+      - ./triton-models:/data/triton-models
     environment:
       MLFLOW_CONTAINER: ${MLFLOW_CONTAINER:-mlflow}
       DERMS_NETWORK: ${DERMS_NETWORK:-derms-r}
@@ -24,6 +25,13 @@ services:
       OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
       HF_TOKEN: ${HF_TOKEN:-}
       HUGGING_FACE_HUB_TOKEN: ${HF_TOKEN:-}
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USERNAME: ${SMTP_USERNAME:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      SMTP_FROM: ${SMTP_FROM:-}
+      SMTP_USE_TLS: ${SMTP_USE_TLS:-1}
+      PUBLIC_HOST: ${PUBLIC_HOST:-localhost}
     networks:
       - derms-r
     depends_on:
@@ -33,10 +41,17 @@ services:
   mlflow:
     image: ghcr.io/mlflow/mlflow:v2.9.2
     container_name: mlflow
+    # --artifacts-destination (not --default-artifact-root) + --serve-artifacts:
+    # with --default-artifact-root set to a plain path, experiments get a plain
+    # artifact_uri, so clients (training containers) try to write straight to
+    # that path on their OWN ephemeral filesystem -- it doesn't exist there, so
+    # the write silently lands nowhere. This routes uploads through the server's
+    # proxy API instead, which writes to the real mounted ./mlflow-data volume.
     command: >
       mlflow server --host 0.0.0.0 --port 5000
       --backend-store-uri sqlite:////mlflow/mlflow.db
-      --default-artifact-root /mlflow/artifacts
+      --artifacts-destination /mlflow/artifacts
+      --serve-artifacts
     ports:
       - "5001:5000"
     volumes:
@@ -61,6 +76,48 @@ services:
       HF_HOME: /root/.cache/huggingface
     volumes:
       - ./hf-cache:/root/.cache/huggingface
+
+  # Inference tab backend: serves predictions either directly via PyTorch
+  # (loading a locked checkpoint on demand) or by proxying to triton-server.
+  # Reuses the already-built training image -- same `docker compose
+  # --profile train build train` step produces it, no separate build here.
+  # Not exposed on a host port; only the orchestrator (already the one
+  # authenticated, publicly reachable service) talks to it, proxying
+  # browser requests over this network. See orchestrator/inference_proxy.py.
+  inference-api:
+    image: derms-r-train:cpu
+    # "-m" prefix: the image's ENTRYPOINT is already ["python"] (see
+    # Dockerfile), so this runs `python -m uvicorn ...`, not a bare
+    # `uvicorn` binary that doesn't exist on this image's PATH.
+    command: ["-m", "uvicorn", "derms.inference_server:app", "--host", "0.0.0.0", "--port", "8060"]
+    environment:
+      RESULTS_ROOT: /workspace/results
+      TRITON_MODEL_REPO: /workspace/triton-models
+      TRITON_URL: http://triton-server:8000
+    volumes:
+      - ./results:/workspace/results
+      - ./triton-models:/workspace/triton-models
+    networks:
+      - derms-r
+    restart: unless-stopped
+
+  # Models land here via export_models.py --deploy-triton (triggered from the
+  # Inference tab's "Deploy" button -- see orchestrator/launcher.py's
+  # deploy_container_argv). --model-control-mode=poll: anything written into
+  # the shared ./triton-models volume gets picked up automatically within
+  # --repository-poll-secs, no explicit load/unload API calls needed (unlike
+  # the Jetson-constrained sibling project this pattern is ported from --
+  # this GPU has the VRAM headroom not to need that).
+  triton-server:
+    image: nvcr.io/nvidia/tritonserver:24.12-py3
+    command: >
+      tritonserver --model-repository=/models
+      --model-control-mode=poll --repository-poll-secs=15
+    volumes:
+      - ./triton-models:/models
+    networks:
+      - derms-r
+    restart: unless-stopped
 
 networks:
   derms-r:

@@ -3,7 +3,9 @@
 # pytorch image in Dockerfile; this container only talks to the host Docker socket.
 FROM python:3.12-slim
 
-RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates curl tar \
+# tzdata: python:3.12-slim has no zoneinfo database, so a TZ env var alone
+# wouldn't shift datetime.now() -- the scheduling window needs real local time.
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates curl tar tzdata \
     && arch="$(uname -m)" \
     && curl -fsSL "https://download.docker.com/linux/static/stable/${arch}/docker-27.5.1.tgz" -o /tmp/docker.tgz \
     && tar -xzf /tmp/docker.tgz -C /tmp \

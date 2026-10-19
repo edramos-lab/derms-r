@@ -225,7 +225,7 @@ def run_identity(cfg, plan, name, ratio, fold):
     return digest({'config': cfg, 'split_hash': plan['hash'], 'model': name, 'ratio': ratio, 'fold': fold})
 
 
-def aggregate(name, cfg, plan, output):
+def aggregate(name, cfg, plan, output, log_tracking=True):
     rows, summary = [], []
     params = metric_kwargs(cfg)
     n_folds = int(cfg.get('folds', FOLDS))
@@ -273,6 +273,26 @@ def aggregate(name, cfg, plan, output):
                 s[key + '_mean'] = float(np.mean(values)) if all(v is not None for v in values) else None
             s['realized_ratio_std'] = float(np.std([r['realized_ratio'] for r in cell], ddof=1))
             summary.append(s)
+            if log_tracking:
+                derms_identity = digest({'config': cfg, 'split_hash': plan['hash'], 'model': model,
+                                          'ratio': ratio, 'kind': 'derms-r-summary'})
+                with Tracker(derms_identity, f'{name}-{model}-r{ratio:.2f}-derms-r', name,
+                             {**cfg, 'dataset': name, 'model': model, 'ratio': ratio},
+                             job_type='derms-r-summary') as derms_tracker:
+                    # The DERMS-R score and the four terms it's built from (README §score):
+                    # performance (mean/sd validation accuracy), data efficiency (ratio),
+                    # complexity efficiency (trainable params), and stability (sd accuracy).
+                    derms_tracker.summary({
+                        'derms_r': s['derms_r_raw'],
+                        'mean_validation_accuracy': s['mean_validation_accuracy'],
+                        'sd_validation_accuracy': s['sd_validation_accuracy'],
+                        'num_parameters': s['num_parameters'],
+                        'data_ratio': s['data_ratio'],
+                        'performance_component': s['performance_component'],
+                        'data_efficiency_component': s['data_efficiency_component'],
+                        'complexity_efficiency_component': s['complexity_efficiency_component'],
+                        'stability_component': s['stability_component'],
+                    })
     df = pd.DataFrame(summary)
     df = add_normalized_column(df)
     df = attach_architecture_optima(df)
@@ -312,6 +332,12 @@ def benchmark(name, ds, plan, cfg, output):
                     prof = profile(trained, cfg)
                     if cfg.get('save_probabilities', True):
                         save_predictions(trained, ds, split['val'], cfg, directory / 'predictions.npz')
+                    reports = [
+                        directory / 'val_confusion_matrix.png',
+                        directory / 'val_roc_curve.png',
+                        directory / 'val_classification_report.json',
+                    ]
+                    tracker.artifact([p for p in reports if p.exists()], kind='classification')
                     tracker.summary({**{k: v for k, v in result.items() if not isinstance(v, (list, dict))},
                                     **prof, 'best_epoch': epoch, 'cuda_train_peak_bytes': peak})
                     tracker.checkpoint(directory / 'best.pt')
@@ -328,7 +354,10 @@ def benchmark(name, ds, plan, cfg, output):
 
 
 def lock_selected(name, ds, plan, cfg, output):
-    df = aggregate(name, cfg, plan, output)
+    # log_tracking=False: this re-aggregate is only to pick the winner -- the
+    # DERMS-R summary for every (model, ratio) was already logged once when
+    # benchmark() produced these results; re-logging here would duplicate it.
+    df = aggregate(name, cfg, plan, output, log_tracking=False)
     # Select after scoring every architecture × ratio. Never filter by max accuracy first.
     winner = df.astype(object).where(pd.notna(df), None).iloc[0].to_dict()
     directory = output / name / 'locked'

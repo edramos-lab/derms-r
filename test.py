@@ -124,7 +124,8 @@ def main():
                       'evaluated_at_utc': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())})
         artifacts = [folder / 'test_result.json', folder / 'test_confusion_matrix.png',
                      folder / 'test_roc_curve.png', folder / 'test_classification_report.json']
-        with b.Tracker(b.digest(ticket), 'test-' + b.digest(ticket)[:12], args.dataset,
+        run_name = f"{args.dataset}-{selection['winner']['model']}-test"
+        with b.Tracker(b.digest(ticket), run_name, args.dataset,
                        {'lock': lock, 'test_fingerprint': test_hash}, 'locked-test') as tracker:
             tracker.summary({k: v for k, v in result.items() if not isinstance(v, (list, dict))})
             tracker.artifact([path for path in artifacts if path.exists()])

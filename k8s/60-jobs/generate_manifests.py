@@ -165,6 +165,7 @@ def train_job(model: str, dataset: str, arch: str, registry: str, epochs: int) -
                 "spec": {
                     "restartPolicy": "OnFailure",
                     "terminationGracePeriodSeconds": 60,
+                    "runtimeClassName": "nvidia",
                     "nodeSelector": {"gpu-arch": pool["node_selector"]},
                     "tolerations": [
                         {"key": "nvidia.com/gpu", "operator": "Exists", "effect": "NoSchedule"}
@@ -218,6 +219,7 @@ echo "All {num_models} train Jobs for {dataset} are complete."
                 "spec": {
                     "restartPolicy": "Never",
                     "serviceAccountName": "derms-lock-waiter",
+                    "runtimeClassName": "nvidia",
                     "nodeSelector": {"gpu-arch": "ada"},  # arbitrary; refit is a single run
                     "tolerations": [
                         {"key": "nvidia.com/gpu", "operator": "Exists", "effect": "NoSchedule"}

@@ -11,6 +11,9 @@ Examples:
         --num_classes 10 --onnx-only --device cuda
     python export_models.py --model_path ./locked/best.pt --model_name efficientnet_b0 \\
         --num_classes 4 --fp16 --device cuda
+    # Export + deploy into a Triton model repository as "cifar10_efficientvit_b0":
+    python export_models.py --lock-dir /workspace/results/runs/<job_id>/cifar10/locked \\
+        --onnx-only --deploy-triton /workspace/triton-models
 """
 from __future__ import annotations
 import argparse
@@ -43,10 +46,17 @@ def parse_args():
     parser.add_argument('--int8', action='store_true', help='TensorRT INT8')
     parser.add_argument('--onnx-only', action='store_true', help='Skip TensorRT engine build')
     parser.add_argument('--lock-dir', type=Path,
-                        help='locked/ directory; infers checkpoint, alias, and class count')
+                        help='locked/ directory; infers checkpoint, alias, class count, and dataset')
     parser.add_argument('--class_names', type=str, nargs='+',
                         help='Class names (space-separated). Inferred from lock.json when --lock-dir is set.')
     parser.add_argument('--test_image', type=str, default='test_image.jpg')
+    parser.add_argument('--deploy-triton', type=Path, default=None,
+                        help='Triton model-repository root; if set, places the exported ONNX model at '
+                             '{root}/{dataset}_{architecture}/1/model.onnx with a generated config.pbtxt '
+                             'and labels.txt. Requires --lock-dir (for the dataset name) or --dataset.')
+    parser.add_argument('--dataset', type=str, default=None,
+                        help='Dataset name for --deploy-triton when not using --lock-dir.')
+    parser.add_argument('--triton_max_batch', type=int, default=8)
     return parser.parse_args()
 
 
@@ -64,11 +74,15 @@ def resolve_from_lock(lock_dir):
     alias = winner.get('model') or winner.get('architecture')
     if not alias:
         raise ValueError('lock.json/selection.json must contain winner.model')
+    # lock.json stores the dataset name directly; fall back to the directory
+    # layout (.../runs/{job_id}/{dataset}/locked) if an older lock.json lacks it.
+    dataset = payload.get('dataset') or lock_dir.parent.name
     return {
         'model_path': str(checkpoint),
         'model_name': alias,
         'num_classes': len(classes) if classes else int(winner.get('number_of_folds') or 0) or None,
         'class_names': classes,
+        'dataset': dataset,
         'output_dir': str(lock_dir / 'export'),
     }
 
@@ -108,10 +122,38 @@ def load_model(model_path, model_name, num_classes, device):
 
 
 def export_to_onnx(model, output_path, input_size, batch_size, device):
+    """Export a PyTorch model to ONNX.
+
+    Always traces on CPU, regardless of `device`, and disables timm's fused
+    scaled-dot-product attention first. Both are correctness fixes, not
+    performance choices -- confirmed (in a sibling project using the same
+    timm architectures: efficientnet_b0, convnextv2_tiny, deit3_base, ...)
+    to silently produce wrong predictions otherwise, not just slower ones:
+
+    1. GPU-traced ONNX graphs bake in cuDNN-specific kernel/op-ordering
+       decisions from that one forward pass that don't reproduce correctly
+       once the graph runs through onnxruntime/TensorRT instead of PyTorch's
+       own CUDA kernels. Re-exporting the identical checkpoint on CPU matched
+       PyTorch to ~1e-6; the GPU-traced export had a real, large (>1.0) logit
+       difference. Random-noise smoke-test inputs look fine either way, which
+       is why this is easy to miss.
+    2. timm's fused SDPA path exports the attention scale as a dynamic,
+       shape-computed subgraph (Shape -> Gather -> Cast -> Sqrt -> Div)
+       instead of a baked-in constant. TensorRT's graph optimizer mishandles
+       that, washing every attention block's softmax out to near-uniform
+       output. Confirmed on deit3_base_patch16_224 (this registry's
+       deit3_base): 72% -> 99.7% accuracy after disabling fused attention,
+       with FP16 and FP32 equally broken beforehand, ruling out precision as
+       the cause. No-op for non-attention (non-timm) architectures.
+    """
+    from timm.layers import set_fused_attn
+    set_fused_attn(False)
+    cpu_model = model.eval().to('cpu')
+    dummy_input = torch.randn(batch_size, 3, input_size, input_size)
+
     print(f'Exporting to ONNX: {output_path}')
-    dummy_input = torch.randn(batch_size, 3, input_size, input_size, device=device)
     torch.onnx.export(
-        model,
+        cpu_model,
         dummy_input,
         output_path,
         export_params=True,
@@ -123,6 +165,27 @@ def export_to_onnx(model, output_path, input_size, batch_size, device):
     )
     import onnx
     onnx.checker.check_model(onnx.load(output_path))
+
+    # The dynamo-based exporter path can externalize weights into a
+    # same-directory "<name>.onnx.data" file even for small models, whose
+    # location is stored in the graph as the literal relative name
+    # "model.onnx.data" regardless of what output_path is actually called.
+    # When multiple models land in the same flat directory (e.g. this
+    # script's --output_dir, or a Triton model repository), the second
+    # export silently overwrites the first model's weight data. Every model
+    # here is well under the 2GB protobuf single-file limit, so fold any
+    # external data back into one self-contained file.
+    data_path = output_path + '.data'
+    if os.path.exists(data_path):
+        onnx_model = onnx.load(output_path)  # loads external data by default
+        onnx.save_model(onnx_model, output_path, save_as_external_data=False)
+        os.remove(data_path)
+        print(f'Folded external data ({data_path}) into single-file {output_path}')
+
+    # .to('cpu') above mutates the module in place (cpu_model is model), so
+    # move it back to the caller's original device as a courtesy -- nothing
+    # here should leave the passed-in model relocated as a side effect.
+    model.to(device)
     print('ONNX model exported successfully.')
 
 
@@ -164,6 +227,85 @@ def export_to_tensorrt(onnx_path, output_path, input_size=224, fp16=False, int8=
             raise RuntimeError('Failed to build TensorRT engine.')
         Path(output_path).write_bytes(serialized)
         print('TensorRT engine exported successfully.')
+
+
+def write_triton_config(config_path, model_name, num_classes, input_size=224,
+                        max_batch_size=8, backend='onnxruntime'):
+    """Generate a Triton config.pbtxt for an exported ONNX model.
+
+    backend='onnxruntime' (not 'tensorrt') by default: the TensorRT engines
+    built by export_to_tensorrt() here are tied to the exact TensorRT version
+    inside this container, and Triton's own image can pin a different one --
+    a sibling project confirmed real "old deserialization call on a newer
+    plan file" failures from that mismatch. ONNX Runtime has no such
+    versioning coupling and is what Triton's model-repository `.onnx` files
+    are served with here.
+    """
+    config = f"""name: "{model_name}"
+backend: "{backend}"
+max_batch_size: {max_batch_size}
+
+input [
+  {{
+    name: "input"
+    data_type: TYPE_FP32
+    dims: [3, {input_size}, {input_size}]
+  }}
+]
+
+output [
+  {{
+    name: "output"
+    data_type: TYPE_FP32
+    dims: [{num_classes}]
+  }}
+]
+
+instance_group [
+  {{
+    count: 1
+    kind: KIND_GPU
+  }}
+]
+
+dynamic_batching {{
+  preferred_batch_size: [1, 4]
+  max_queue_delay_microseconds: 100
+}}
+"""
+    Path(config_path).write_text(config)
+    print(f'Triton config written to {config_path}')
+
+
+def write_labels_file(labels_path, class_names):
+    Path(labels_path).write_text('\n'.join(class_names) + '\n')
+    print(f'Labels written to {labels_path}')
+
+
+def deploy_to_triton(onnx_path, repo_root, dataset, architecture, num_classes,
+                     class_names, input_size=224, max_batch_size=8):
+    """Place an exported ONNX model into a Triton model-repository layout.
+
+    Model name is "{dataset}_{architecture}" so multiple datasets and
+    architectures can share one repository without colliding (Triton keys
+    models by directory name under the repository root).
+
+    Layout Triton expects:
+        {repo_root}/{dataset}_{architecture}/config.pbtxt
+        {repo_root}/{dataset}_{architecture}/labels.txt
+        {repo_root}/{dataset}_{architecture}/1/model.onnx
+    """
+    model_name = f'{dataset}_{architecture}'
+    model_dir = Path(repo_root) / model_name
+    version_dir = model_dir / '1'
+    version_dir.mkdir(parents=True, exist_ok=True)
+
+    dest_onnx = version_dir / 'model.onnx'
+    dest_onnx.write_bytes(Path(onnx_path).read_bytes())
+    write_triton_config(model_dir / 'config.pbtxt', model_name, num_classes, input_size, max_batch_size)
+    write_labels_file(model_dir / 'labels.txt', class_names)
+    print(f'Deployed to Triton model repository: {model_dir}')
+    return model_name
 
 
 def onnx_session(onnx_path, device):
@@ -235,8 +377,11 @@ def main():
             args.class_names = inferred['class_names']
         if args.output_dir == 'exported_models':
             args.output_dir = inferred['output_dir']
+        args.dataset = args.dataset or inferred['dataset']
     if not args.model_path:
         raise ValueError('Provide --model_path or --lock-dir.')
+    if args.deploy_triton and not args.dataset:
+        raise ValueError('--deploy-triton requires --dataset (or --lock-dir, which infers it).')
 
     os.makedirs(args.output_dir, exist_ok=True)
     device = torch.device(args.device if args.device == 'cpu' or torch.cuda.is_available() else 'cpu')
@@ -261,10 +406,20 @@ def main():
         if not args.onnx_only and os.path.exists(tensorrt_path):
             test_tensorrt_inference(tensorrt_path, args.test_image, class_names, args.input_size)
 
+    triton_model_name = None
+    if args.deploy_triton:
+        print('\nDeploying to Triton model repository...')
+        triton_model_name = deploy_to_triton(
+            onnx_path, args.deploy_triton, args.dataset, args.model_name,
+            args.num_classes, class_names, args.input_size, args.triton_max_batch,
+        )
+
     print('\nExport completed.')
     print(f'ONNX model: {onnx_path}')
     if not args.onnx_only:
         print(f'TensorRT engine: {tensorrt_path}')
+    if triton_model_name:
+        print(f'Triton model repository entry: {args.deploy_triton}/{triton_model_name}')
 
 
 if __name__ == '__main__':

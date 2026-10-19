@@ -5,8 +5,11 @@ import math
 import os
 import shlex
 import subprocess
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from datetime import datetime
 from pathlib import Path
+
+from orchestrator.mailer import parse_emails
 
 
 def _load_protocol():
@@ -26,6 +29,22 @@ REGISTRY = _PROTOCOL.REGISTRY
 
 MAX_COMBINATIONS = 12
 EXCLUDED_NETWORKS = {"bridge", "host", "none"}
+
+# Nightly operating window (see docs/benchmark-execution-plan.md Sec 3.1) --
+# same 20:00-08:00 convention as ray/driver.py, applied here to plain `docker run`.
+WINDOW_START_HOUR = 20
+WINDOW_END_HOUR = 8
+
+
+def in_window(now=None, start_hour=None, end_hour=None):
+    hour = (now or datetime.now()).hour
+    start = WINDOW_START_HOUR if start_hour is None else start_hour
+    end = WINDOW_END_HOUR if end_hour is None else end_hour
+    if start == end:
+        return True
+    if start < end:
+        return start <= hour < end
+    return hour >= start or hour < end
 
 MODEL_LABELS = {
     "resnet50": "ResNet50",
@@ -80,6 +99,8 @@ class Settings:
     paths_resolved: bool = False
     hf_token: str | None = None
     host_hf_cache: Path | None = None
+    host_triton_models: Path | None = None
+    public_host: str = "localhost"
 
     @classmethod
     def from_env(cls):
@@ -100,6 +121,8 @@ class Settings:
             paths_resolved=not in_docker,
             hf_token=os.environ.get("HF_TOKEN") or os.environ.get("HUGGING_FACE_HUB_TOKEN") or None,
             host_hf_cache=Path(os.environ["HOST_HF_CACHE"]) if os.environ.get("HOST_HF_CACHE") else None,
+            host_triton_models=Path(os.environ["HOST_TRITON_MODELS"]) if os.environ.get("HOST_TRITON_MODELS") else None,
+            public_host=os.environ.get("PUBLIC_HOST", "localhost"),
         )
 
 
@@ -140,9 +163,10 @@ class RunSpec:
     pretrained: bool
     experiment: str
     artifacts: bool
-    notify_email: str
+    notify_emails: list = field(default_factory=list)
     download: bool = False
     label: str = ""
+    window: bool = False
 
 
 def fmt_float(value):
@@ -302,7 +326,11 @@ def _shared(payload, datasets, models):
         raise ConfigError("MLflow experiment name cannot be empty.")
     if any(ord(c) < 0x20 for c in experiment):
         raise ConfigError("MLflow experiment name cannot contain control characters.")
-    email = str(payload.get("notify_email") or "").strip()
+    raw_emails = str(payload.get("notify_emails") or payload.get("notify_email") or "")
+    try:
+        emails = parse_emails(raw_emails)
+    except ValueError as error:
+        raise ConfigError(str(error)) from None
     return {
         "datasets": datasets,
         "models": models,
@@ -313,7 +341,8 @@ def _shared(payload, datasets, models):
         "pretrained": bool(payload.get("pretrained", True)),
         "experiment": experiment,
         "artifacts": bool(payload.get("mlflow_artifacts", False)),
-        "notify_email": email,
+        "notify_emails": emails,
+        "window": bool(payload.get("window", False)),
     }
 
 
@@ -379,7 +408,7 @@ def gpu_args(device):
     return ["--gpus", f"device={index}"]
 
 
-def train_args(run: RunSpec, tracking_uri: str | None):
+def train_args(run: RunSpec, tracking_uri: str | None, resume: bool = False):
     args = [
         "train.py",
         "--data", "/workspace/datasets",
@@ -398,6 +427,11 @@ def train_args(run: RunSpec, tracking_uri: str | None):
         args.append("--no-augmentation")
     if not run.pretrained:
         args.append("--no-pretrained")
+    if resume:
+        # Relaunch of a window job stopped at 08:00 -- train.py checkpoints
+        # every epoch, so --resume continues from the last completed epoch
+        # instead of redoing the whole (ratio, fold) matrix.
+        args.append("--resume")
     if run.action == "prepare":
         args.extend(["--prepare-only", "--download"])
     elif tracking_uri:
@@ -411,21 +445,21 @@ def train_args(run: RunSpec, tracking_uri: str | None):
     return args
 
 
-def container_argv(run: RunSpec, settings: Settings, plan: MLflowPlan | None, job_id: str):
+def _base_container_argv(settings: Settings, plan: MLflowPlan | None, output, container_name: str,
+                          device: str, labels: list, extra_volumes: list | None = None):
     if settings.host_datasets is None or settings.host_results is None:
         raise DockerError("Host dataset and results paths are not resolved.")
-    output = settings.host_results / "runs" / job_id
-    tracking = None if run.action == "prepare" or plan is None else plan.tracking_uri
-    command = [
-        "run", "-d",
-        "--name", f"derms-train-{job_id}",
-        "--label", f"derms.job={job_id}",
-        "--label", "derms.role=train",
+    command = ["run", "-d", "--name", container_name]
+    for label in labels:
+        command.extend(["--label", label])
+    command.extend([
         "--shm-size", "2g",
         "-v", f"{settings.host_datasets}:/workspace/datasets",
         "-v", f"{output}:/workspace/results",
-    ]
-    if plan is not None and run.action == "train":
+    ])
+    for host_path, container_path in extra_volumes or []:
+        command.extend(["-v", f"{host_path}:{container_path}"])
+    if plan is not None:
         command.extend(["--network", plan.network, "-e", f"MLFLOW_TRACKING_URI={plan.tracking_uri}"])
     if settings.host_hf_cache is not None:
         settings.host_hf_cache.mkdir(parents=True, exist_ok=True)
@@ -439,9 +473,114 @@ def container_argv(run: RunSpec, settings: Settings, plan: MLflowPlan | None, jo
             "-e", f"HF_TOKEN={settings.hf_token}",
             "-e", f"HUGGING_FACE_HUB_TOKEN={settings.hf_token}",
         ])
-    command.extend(gpu_args(run.device))
+    command.extend(gpu_args(device))
     command.append(settings.image)
-    command.extend(train_args(run, tracking))
+    return command
+
+
+def container_argv(run: RunSpec, settings: Settings, plan: MLflowPlan | None, job_id: str, resume: bool = False):
+    output = settings.host_results / "runs" / job_id
+    tracking = None if run.action == "prepare" or plan is None else plan.tracking_uri
+    labels = [f"derms.job={job_id}", "derms.role=train"]
+    command = _base_container_argv(settings, plan if run.action == "train" else None, output,
+                                    f"derms-train-{job_id}", run.device, labels)
+    command.extend(train_args(run, tracking, resume=resume))
+    return command
+
+
+def lock_args(job: dict, dataset: str, tracking_uri: str | None):
+    args = [
+        "train.py",
+        "--data", "/workspace/datasets",
+        "--output", "/workspace/results",
+        "--datasets", *job["datasets"],
+        "--models", *job["models"],
+        "--epochs", str(job["epochs"]),
+        "--batch-size", str(job["batch_size"]),
+        "--lr", fmt_float(job["lr"]),
+        "--weight-decay", fmt_float(job["weight_decay"]),
+        "--seed", str(job["seed"]),
+        "--holdout", fmt_float(job["holdout"]),
+        "--device", job["device"],
+    ]
+    if not job.get("augmentation", True):
+        args.append("--no-augmentation")
+    if not job.get("pretrained", True):
+        args.append("--no-pretrained")
+    args.extend(["--resume", "--lock", dataset])
+    if tracking_uri:
+        args.extend([
+            "--mlflow",
+            "--mlflow-tracking-uri", tracking_uri,
+            "--mlflow-experiment", job.get("mlflow_experiment") or "derms-r-benchmark",
+        ])
+        if job.get("mlflow_artifacts"):
+            args.append("--mlflow-artifacts")
+    return args
+
+
+def test_args(dataset: str, tracking_uri: str | None, experiment: str | None):
+    args = ["test.py", "--output", "/workspace/results", "--dataset", dataset]
+    if tracking_uri:
+        args.extend([
+            "--mlflow",
+            "--mlflow-tracking-uri", tracking_uri,
+            "--mlflow-experiment", experiment or "derms-r-benchmark",
+        ])
+    return args
+
+
+def lock_container_argv(job: dict, dataset: str, settings: Settings, plan: MLflowPlan | None, lock_id: str):
+    output = settings.host_results / "runs" / job["id"]
+    labels = [f"derms.job={job['id']}", "derms.role=lock", f"derms.dataset={dataset}"]
+    command = _base_container_argv(settings, plan, output, f"derms-lock-{lock_id}", job["device"], labels)
+    command.extend(lock_args(job, dataset, plan.tracking_uri if plan else None))
+    return command
+
+
+def test_container_argv(job: dict, dataset: str, settings: Settings, plan: MLflowPlan | None, test_id: str):
+    output = settings.host_results / "runs" / job["id"]
+    labels = [f"derms.job={job['id']}", "derms.role=test", f"derms.dataset={dataset}"]
+    command = _base_container_argv(settings, plan, output, f"derms-test-{test_id}", job["device"], labels)
+    command.extend(test_args(dataset, plan.tracking_uri if plan else None, job.get("mlflow_experiment")))
+    return command
+
+
+def deploy_args(job: dict, dataset: str):
+    # No "python" prefix: the image's ENTRYPOINT is already ["python"] (see
+    # Dockerfile), same as train_args/lock_args/test_args above.
+    #
+    # --lock-dir is relative to /workspace/results *inside the container*,
+    # which the "-v" mount in deploy_container_argv already points at this
+    # job's own directory (host_results/runs/{job_id}) -- same as
+    # lock_args/test_args' "--output /workspace/results" above. Prefixing
+    # with runs/{job_id}/ here would double that and point nowhere; this
+    # was caught by actually running the generated command against a real
+    # locked checkpoint, not just reading the code.
+    return [
+        "export_models.py",
+        "--lock-dir", f"/workspace/results/{dataset}/locked",
+        "--onnx-only",
+        "--deploy-triton", "/workspace/triton-models",
+    ]
+
+
+def deploy_container_argv(job: dict, dataset: str, settings: Settings, deploy_id: str):
+    """One-off export_models.py --deploy-triton run (no MLflow plan needed --
+    this isn't a training/eval run). Requires the Triton model-repository
+    mount to be resolved (see Settings.host_triton_models /
+    resolve_host_paths), unlike train/lock/test which don't touch it."""
+    if settings.host_triton_models is None:
+        raise DockerError(
+            "No Triton model-repository mount resolved (expected at /data/triton-models on the "
+            "orchestrator container). Add a ./triton-models bind mount to deploy models.")
+    output = settings.host_results / "runs" / job["id"]
+    labels = [f"derms.job={job['id']}", "derms.role=deploy", f"derms.dataset={dataset}"]
+    command = _base_container_argv(
+        settings, None, output, f"derms-deploy-{deploy_id}", job["device"], labels,
+        extra_volumes=[(settings.host_triton_models, "/workspace/triton-models")],
+    )
+    command.extend(deploy_args(job, dataset))
     return command
 
 
@@ -512,7 +651,7 @@ def endpoint_from_inspect(name, inspect):
     }
 
 
-def plan_mlflow(endpoint, network_name):
+def plan_mlflow(endpoint, network_name, public_host="localhost"):
     container = endpoint["container"]
     port = int(endpoint["internal_port"])
     if endpoint.get("user_network"):
@@ -521,7 +660,7 @@ def plan_mlflow(endpoint, network_name):
     else:
         network = network_name
         connect = True
-    host_url = f"http://localhost:{endpoint['host_port']}" if endpoint.get("host_port") else None
+    host_url = f"http://{public_host}:{endpoint['host_port']}" if endpoint.get("host_port") else None
     return MLflowPlan(
         container=container,
         tracking_uri=f"http://{container}:{port}",
@@ -637,6 +776,7 @@ class Docker:
             settings.host_datasets = settings.host_datasets or (root / "datasets")
             settings.host_results = settings.host_results or (root / "results")
             settings.host_hf_cache = settings.host_hf_cache or (root / "hf-cache")
+            settings.host_triton_models = settings.host_triton_models or (root / "triton-models")
             settings.paths_resolved = True
             return settings
         info = self.inspect(os.environ.get("HOSTNAME") or "localhost")
@@ -644,19 +784,24 @@ class Docker:
         datasets = settings.host_datasets or (Path(mounts["/data/datasets"]) if mounts.get("/data/datasets") else None)
         results = settings.host_results or (Path(mounts["/data/results"]) if mounts.get("/data/results") else None)
         hf_cache = settings.host_hf_cache or (Path(mounts["/data/hf-cache"]) if mounts.get("/data/hf-cache") else None)
+        # Optional, same as hf_cache: only the deploy-to-Triton action needs this
+        # mount, so its absence shouldn't break train/lock/test, which don't.
+        triton_models = settings.host_triton_models or (
+            Path(mounts["/data/triton-models"]) if mounts.get("/data/triton-models") else None)
         if datasets is None or results is None:
             raise DockerError(
                 "The orchestrator container must mount datasets at /data/datasets and results at /data/results.")
         settings.host_datasets = Path(datasets)
         settings.host_results = Path(results)
         settings.host_hf_cache = Path(hf_cache) if hf_cache else None
+        settings.host_triton_models = Path(triton_models) if triton_models else None
         settings.paths_resolved = True
         return settings
 
     def mlflow_plan(self, settings: Settings):
         chosen = choose_mlflow(self.ps_rows(), settings.mlflow_container)
         endpoint = endpoint_from_inspect(chosen["name"], self.inspect(chosen["name"]))
-        return plan_mlflow(endpoint, settings.network_name)
+        return plan_mlflow(endpoint, settings.network_name, settings.public_host)
 
     def prepare_network(self, plan: MLflowPlan):
         if not plan.connect:
@@ -685,6 +830,9 @@ class Docker:
 
     def stop(self, name):
         self.call(["stop", "-t", "20", name], timeout=40)
+
+    def remove(self, name):
+        self.call(["rm", "-f", name], check=False, timeout=20)
 
 
 def gpu_required(runs):

@@ -9,6 +9,7 @@ containers on, which is what matters for "can this machine run more jobs."
 """
 import os
 import shutil
+import subprocess
 import time
 
 
@@ -106,6 +107,41 @@ def gpu_info(docker):
     }
 
 
+def gpu_utilization():
+    """Direct nvidia-smi query. Only returns real numbers when this container
+    itself has GPU access (runtime: nvidia / --gpus in compose) -- the toolkit
+    mounts the host driver's nvidia-smi binary into any container regardless of
+    base image. Returns None with no GPU/toolkit or any query failure; this is
+    best-effort telemetry for the dashboard trend and alerting, not load-bearing."""
+    try:
+        proc = subprocess.run(
+            ["nvidia-smi",
+             "--query-gpu=utilization.gpu,power.draw,memory.used,memory.total,temperature.gpu",
+             "--format=csv,noheader,nounits"],
+            capture_output=True, text=True, timeout=10,
+        )
+    except (FileNotFoundError, subprocess.TimeoutExpired, OSError):
+        return None
+    if proc.returncode != 0:
+        return None
+    lines = (proc.stdout or "").strip().splitlines()
+    if not lines:
+        return None
+    parts = [p.strip() for p in lines[0].split(",")]
+    if len(parts) != 5:
+        return None
+    try:
+        return {
+            "gpu_percent": float(parts[0]),
+            "power_watts": float(parts[1]),
+            "memory_used_mb": float(parts[2]),
+            "memory_total_mb": float(parts[3]),
+            "temperature_c": float(parts[4]),
+        }
+    except ValueError:
+        return None
+
+
 def unavailable_sensor(name):
     return {
         "available": False,
@@ -167,6 +203,7 @@ def collect(docker):
     load = load_average()
     cores = cpu_count()
     gpu = gpu_info(docker)
+    utilization = gpu_utilization()
     return {
         "cpu": {"percent": cpu_pct, "cores": cores},
         "memory": mem,
@@ -174,7 +211,9 @@ def collect(docker):
         "load_average": load,
         "uptime_seconds": uptime_seconds(),
         "gpu": gpu,
-        "temperature": unavailable_sensor("Temperature"),
+        "gpu_utilization": utilization,
+        "temperature": unavailable_sensor("Temperature") if utilization is None else {
+            "available": True, "celsius": utilization["temperature_c"]},
         "nvram": unavailable_sensor("NVRAM"),
         "insights": best_practice_insights(cpu_pct, mem, disk, gpu, load, cores),
         "note": "Metrics reflect the Docker VM (colima) this container runs in, not raw macOS host stats.",

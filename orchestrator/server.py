@@ -550,16 +550,32 @@ class App:
     def _lock_status(self, job):
         # Filesystem-derived, not persisted: whether each dataset this training
         # job covered has a locked final refit, and whether that lock has been
-        # evaluated against the untouched official test set.
+        # evaluated against the untouched official test set. Each architecture
+        # now locks and tests itself automatically as soon as its own sweep
+        # finishes (results/<dataset>/locked/<model>/), not only a single
+        # overall winner picked at the end -- so "locked"/"tested" below are
+        # true only once every one of this job's architectures has its own
+        # lock/test result, with per-architecture counts alongside for the
+        # partial case. The legacy single global-winner path
+        # (results/<dataset>/locked/lock.json, no model subdirectory) is
+        # checked as a fallback so a manually-triggered legacy Lock/Test still
+        # shows up.
         if job.get("action") != "train" or job.get("state") != "exited" or job.get("exit_code") != 0:
             return []
         rows = []
         for dataset in job.get("datasets") or []:
-            folder = Path(job["output"]) / dataset / "locked"
+            dataset_dir = Path(job["output"]) / dataset
+            models = job.get("models") or []
+            locked_count = sum((dataset_dir / "locked" / m / "lock.json").exists() for m in models)
+            tested_count = sum((dataset_dir / "locked" / m / "test_result.json").exists() for m in models)
+            legacy_folder = dataset_dir / "locked"
             rows.append({
                 "dataset": dataset,
-                "locked": (folder / "lock.json").exists(),
-                "tested": (folder / "test_result.json").exists(),
+                "locked": bool(models) and locked_count == len(models) or (legacy_folder / "lock.json").exists(),
+                "tested": bool(models) and tested_count == len(models) or (legacy_folder / "test_result.json").exists(),
+                "locked_count": locked_count,
+                "tested_count": tested_count,
+                "total": len(models),
             })
         return rows
 
@@ -585,19 +601,19 @@ class App:
             self._write()
 
     def _auto_chain_unlocked(self, job):
-        """A train job that finishes successfully is locked automatically; a
-        lock job that finishes successfully is tested automatically. No manual
-        Lock/Test clicks needed for the common path -- the buttons remain as a
-        manual retry if an auto-chained step fails (e.g. a transient Docker error)."""
+        """A train job no longer auto-chains a legacy global-winner lock job:
+        derms/engine.py's benchmark() now locks and tests each architecture
+        automatically, at its own best ratio, as soon as that architecture's
+        own sweep finishes -- inside the training container itself, not as a
+        separate chained job. Launching the legacy lock here on top of that
+        would just re-refit the eventual best-ranked architecture a second
+        time for no benefit. A lock job that finishes successfully (only ever
+        launched manually now, via the legacy Lock button) is still
+        auto-chained to a test job, since that two-step legacy path still
+        needs it."""
         if job.get("exit_code") != 0:
             return
-        if job.get("action") == "train":
-            for dataset in job.get("datasets") or []:
-                try:
-                    self._satellite_unlocked(job["id"], dataset, "lock", require_locked=False)
-                except DockerError as error:
-                    job["error"] = f"Auto-lock failed for {dataset!r}: {error}"
-        elif job.get("action") == "lock":
+        if job.get("action") == "lock":
             parent_id = job.get("parent_job")
             dataset = (job.get("datasets") or [None])[0]
             if parent_id and dataset:

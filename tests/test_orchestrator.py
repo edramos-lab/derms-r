@@ -336,71 +336,96 @@ class LockTestTests(unittest.TestCase):
             self.app.lock(job_id, "cifar10")
 
     def test_lock_status_reflects_filesystem_state(self):
+        # derms/engine.py now locks+tests each architecture under its own
+        # results/<dataset>/locked/<model>/ as soon as that architecture's
+        # own sweep finishes, so the dashboard's aggregate locked/tested flags
+        # are true only once every one of the job's models (here: ["resnet50"])
+        # has its own lock.json / test_result.json.
         job = self._completed_train_job()
         jobs = self.app.list_jobs()
         row = next(j for j in jobs if j["id"] == job["id"])
-        self.assertEqual(row["lock_status"], [{"dataset": "cifar10", "locked": False, "tested": False}])
-        locked_dir = Path(job["output"]) / "cifar10" / "locked"
-        locked_dir.mkdir(parents=True)
-        (locked_dir / "lock.json").write_text("{}")
+        status = row["lock_status"][0]
+        self.assertEqual(status["dataset"], "cifar10")
+        self.assertFalse(status["locked"])
+        self.assertFalse(status["tested"])
+        self.assertEqual(status["locked_count"], 0)
+        model_dir = Path(job["output"]) / "cifar10" / "locked" / "resnet50"
+        model_dir.mkdir(parents=True)
+        (model_dir / "lock.json").write_text("{}")
         jobs = self.app.list_jobs()
         row = next(j for j in jobs if j["id"] == job["id"])
-        self.assertEqual(row["lock_status"], [{"dataset": "cifar10", "locked": True, "tested": False}])
+        status = row["lock_status"][0]
+        self.assertTrue(status["locked"])
+        self.assertFalse(status["tested"])
+        self.assertEqual(status["locked_count"], 1)
+        self.assertEqual(status["total"], 1)
+        (model_dir / "test_result.json").write_text("{}")
+        jobs = self.app.list_jobs()
+        row = next(j for j in jobs if j["id"] == job["id"])
+        self.assertTrue(row["lock_status"][0]["tested"])
 
-    def test_train_exiting_successfully_auto_triggers_lock(self):
+    def test_train_exiting_successfully_does_not_auto_trigger_a_lock_job(self):
+        # Locking now happens inside the training container itself
+        # (derms/engine.py's benchmark(), per architecture, as each one
+        # finishes), not as a separate orchestrator-launched job after the
+        # whole multi-architecture train job exits -- so no "lock" job should
+        # ever be auto-created here.
         result = self.app.start(fixed_payload())
-        job_id = result["jobs"][0]["id"]
         self.docker.state_result = {"status": "exited", "exit_code": 0}
         with self.app._lock:
             self.app._refresh_unlocked()
         actions = {j["action"] for j in self.app.jobs}
-        self.assertIn("lock", actions)
-        lock_job = next(j for j in self.app.jobs if j["action"] == "lock")
-        self.assertEqual(lock_job["parent_job"], job_id)
-        self.assertEqual(lock_job["datasets"], ["cifar10"])
-        self.assertEqual(lock_job["state"], "running")
+        self.assertNotIn("lock", actions)
 
     def test_lock_exiting_successfully_auto_triggers_test(self):
-        result = self.app.start(fixed_payload())
-        job_id = result["jobs"][0]["id"]
+        # The legacy manual lock path (dashboard "Lock" button, or a direct
+        # app.lock() call) still chains to an auto-test on success.
+        job = self._completed_train_job()
+        lock_entry = self.app.lock(job["id"], "cifar10")
         self.docker.state_result = {"status": "exited", "exit_code": 0}
-        with self.app._lock:
-            self.app._refresh_unlocked()  # train exits -> lock auto-created
-        lock_job = next(j for j in self.app.jobs if j["action"] == "lock")
         # Simulate what the real lock container would have written to disk.
-        locked_dir = Path(self.app._job(job_id)["output"]) / "cifar10" / "locked"
+        locked_dir = Path(job["output"]) / "cifar10" / "locked"
         locked_dir.mkdir(parents=True)
         (locked_dir / "lock.json").write_text("{}")
         with self.app._lock:
             self.app._refresh_unlocked()  # lock job observed exited -> test auto-created
         test_job = next(j for j in self.app.jobs if j["action"] == "test")
-        self.assertEqual(test_job["parent_job"], job_id)
+        self.assertEqual(test_job["parent_job"], job["id"])
         self.assertEqual(test_job["datasets"], ["cifar10"])
         self.assertEqual(test_job["state"], "running")
         argv = self.docker.ran[-1]
         self.assertIn("test.py", argv)
 
-    def test_auto_chain_does_not_fire_on_a_failed_train_job(self):
-        result = self.app.start(fixed_payload())
+    def test_auto_chain_does_not_fire_on_a_failed_lock_job(self):
+        job = self._completed_train_job()
+        self.app.lock(job["id"], "cifar10")
         self.docker.state_result = {"status": "exited", "exit_code": 1}
         with self.app._lock:
             self.app._refresh_unlocked()
-        self.assertFalse(any(j["action"] == "lock" for j in self.app.jobs))
+        self.assertFalse(any(j["action"] == "test" for j in self.app.jobs))
 
     def test_refresh_does_not_skip_jobs_when_auto_chain_inserts_new_ones(self):
-        # Two train jobs exiting in the same refresh pass: inserting the first
-        # job's auto-lock into self.jobs must not cause the second job to be
-        # skipped by the same iteration (regression test for mutating a list
-        # while iterating over it).
-        first = self.app.start(fixed_payload())["jobs"][0]["id"]
-        second = self.app.start(fixed_payload(datasets=["cifar10"]))["jobs"][0]["id"]
+        # Two lock jobs exiting successfully in the same refresh pass:
+        # inserting the first job's auto-test into self.jobs must not cause
+        # the second job to be skipped by the same iteration (regression test
+        # for mutating a list while iterating over it).
+        train_job = self._completed_train_job()
+        first = self.app.lock(train_job["id"], "cifar10")["id"]
+        second_train = self._completed_train_job()
+        second = self.app.lock(second_train["id"], "cifar10")["id"]
+        for job_id in (first, second):
+            locked_dir = Path(self.app._job(job_id)["output"]) / "cifar10" / "locked"
+            locked_dir.mkdir(parents=True, exist_ok=True)
+            (locked_dir / "lock.json").write_text("{}")
         self.docker.state_result = {"status": "exited", "exit_code": 0}
         with self.app._lock:
             self.app._refresh_unlocked()
         self.assertEqual(self.app._job(first)["state"], "exited")
         self.assertEqual(self.app._job(second)["state"], "exited")
-        lock_parents = {j["parent_job"] for j in self.app.jobs if j["action"] == "lock"}
-        self.assertEqual(lock_parents, {first, second})
+        # The resulting test jobs' parent_job is the original *train* job
+        # (the lock job forwards its own parent_job), not the lock job itself.
+        test_parents = {j["parent_job"] for j in self.app.jobs if j["action"] == "test"}
+        self.assertEqual(test_parents, {train_job["id"], second_train["id"]})
 
 
 class LockTestWindowTests(unittest.TestCase):

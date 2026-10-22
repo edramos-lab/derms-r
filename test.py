@@ -55,6 +55,10 @@ def main():
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument('--output', type=Path, required=True)
     p.add_argument('--dataset', choices=b.DATASETS, required=True)
+    p.add_argument('--model', choices=list(b.REGISTRY),
+                   help='test one specific architecture\'s own locked checkpoint '
+                        '(results/<dataset>/locked/<model>/) instead of the single '
+                        'legacy global-winner lock (results/<dataset>/locked/).')
     p.add_argument('--download', action='store_true')
     b.add_tracking_args(p)
     args = p.parse_args()
@@ -63,6 +67,16 @@ def main():
     with b.exclusive(output):
         cfg = b.read_json(output / 'config.json')
         plan = b.read_json(output / args.dataset / 'splits.json')
+        if args.model:
+            folder = output / args.dataset / 'locked' / args.model
+            if not (folder / 'lock.json').exists():
+                raise RuntimeError(f'No locked checkpoint for {args.model}. '
+                                    'It locks automatically once its own training sweep finishes; '
+                                    'see train.py output for why it may have failed.')
+            lock = b.read_json(folder / 'lock.json')
+            result = b.test_architecture(args.dataset, cfg, plan, output, args.model, lock, args.download)
+            print(result['metrics'])
+            return
         folder = output / args.dataset / 'locked'
         if not (folder / 'lock.json').exists():
             raise RuntimeError('No locked final checkpoint. Run train.py --resume --lock DATASET first.')

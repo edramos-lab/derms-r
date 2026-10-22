@@ -309,7 +309,7 @@ def aggregate(name, cfg, plan, output, log_tracking=True):
     return df
 
 
-def benchmark(name, ds, plan, cfg, output):
+def benchmark(name, ds, plan, cfg, output, download=False):
     nclasses = len(plan['classes'])
     for model in cfg['models']:
         for ratio in RATIOS:
@@ -350,10 +350,191 @@ def benchmark(name, ds, plan, cfg, output):
                 gc.collect()
                 if torch.cuda.is_available():
                     torch.cuda.empty_cache()
+        # This architecture's full ratio x fold sweep just finished. Lock and
+        # test it immediately, at its own best ratio, rather than waiting for
+        # every other architecture to finish so a single overall winner can be
+        # picked: with only the winner ever locked and tested, a crash partway
+        # through a multi-architecture run (or simply choosing to stop early)
+        # leaves no held-out result for any architecture at all, and the full
+        # picture across architectures -- not just the eventual top-ranked one
+        # -- is exactly what a held-out comparison is for.
+        try:
+            lock = lock_architecture(name, ds, plan, cfg, output, model)
+            test_architecture(name, cfg, plan, output, model, lock, download)
+        except Exception as error:
+            print(f'{model}: lock/test failed, continuing to the next architecture: '
+                  f'{type(error).__name__}: {error}', flush=True)
     return aggregate(name, cfg, plan, output)
 
 
+def architecture_scores(name, cfg, plan, output, model):
+    """Raw DERMS-R at each of the five ratios for one already-fully-trained
+    architecture, used to pick that architecture's own best ratio to lock.
+    Needs only this architecture's own results, not the other candidates'."""
+    params = metric_kwargs(cfg)
+    n_folds = int(cfg.get('folds', FOLDS))
+    rows = []
+    for ratio in RATIOS:
+        cell = []
+        for fold in range(n_folds):
+            directory = output / name / model / f'r{ratio:.2f}' / f'fold{fold}'
+            path = directory / 'result.json'
+            row = read_json(path)
+            if row['identity'] != run_identity(cfg, plan, model, ratio, fold):
+                raise RuntimeError(f'Stale result: {path}')
+            if file_hash(directory / 'best.pt') != row['checkpoint_sha256']:
+                raise RuntimeError(f'Modified checkpoint: {directory}')
+            cell.append(row)
+        fold_accuracies = [r['metrics']['accuracy'] for r in cell]
+        num_params = cell[0]['profile']['trainable_parameters']
+        scored = derms_r(fold_accuracies, num_params, ratio, **params)
+        rows.append({'ratio': ratio, 'derms_r_raw': scored['derms_r'],
+                      'best_epoch_median': int(np.median([r['best_epoch'] for r in cell]))})
+    return rows
+
+
+def lock_architecture(name, ds, plan, cfg, output, model):
+    """Refit one architecture at its own best ratio (never filtering by max
+    accuracy first) and save the refit checkpoint under its own subdirectory,
+    independently of every other architecture's results or ranking."""
+    rows = architecture_scores(name, cfg, plan, output, model)
+    winner = max(rows, key=lambda r: r['derms_r_raw'])
+    directory = output / name / 'locked' / model
+    directory.mkdir(parents=True, exist_ok=True)
+    selection = {'config_hash': digest(cfg), 'split_hash': plan['hash'], 'model': model,
+                 'ratio': winner['ratio'], 'derms_r_raw': winner['derms_r_raw'],
+                 'final_realized_ratio': len(plan['final_subsets'][f"{winner['ratio']:.2f}"]) / len(ds),
+                 'epochs': winner['best_epoch_median'],
+                 'policy': 'max_derms_r_own_architecture',
+                 'training_indices': plan['final_subsets'][f"{winner['ratio']:.2f}"]}
+    selection['identity'] = digest(selection)
+    selection_path = directory / 'selection.json'
+    if selection_path.exists() and read_json(selection_path) != selection:
+        raise RuntimeError('Locked selection mismatch.')
+    atomic_json(selection_path, selection)
+    lock_path = directory / 'lock.json'
+    if lock_path.exists():
+        lock = read_json(lock_path)
+        if lock['selection'] != selection or file_hash(directory / 'best.pt') != lock['checkpoint_sha256']:
+            raise RuntimeError('Existing locked artifact changed.')
+        print(f'{model}: already locked at r={winner["ratio"]:.2f}.', flush=True)
+        return lock
+    trained, _, _, _ = fit(ds, selection['training_indices'], None, cfg, model,
+                          len(plan['classes']), directory, selection['identity'], cfg['seed'] + 700000,
+                          selection['epochs'])
+    del trained
+    lock = {'schema': SCHEMA, 'dataset': name, 'selection': selection,
+            'classes': plan['classes'], 'checkpoint_sha256': file_hash(directory / 'best.pt'),
+            'config_hash': digest(cfg), 'split_hash': plan['hash'],
+            'locked_at_utc': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())}
+    atomic_json(lock_path, lock)
+    print(f'{model}: locked at r={winner["ratio"]:.2f} (own best; raw DERMS-R={winner["derms_r_raw"]:.4f}).',
+          flush=True)
+    return lock
+
+
+def untouched_test_data(name, cfg, plan, download):
+    """The official, never-trained-on test partition for one dataset, with
+    the same leakage checks test.py has always applied before first opening it."""
+    root = Path(cfg['data']) / name
+    kind = plan['partition']['kind']
+    if name != 'all':
+        ds = official(name, root, test=True, download=download)
+        records = inventory(ds)
+        classes = list(getattr(ds, 'classes', [str(i) for i in sorted(set(labels(ds)))]))
+        groups = None
+    elif kind == 'all_folders':
+        test_name = plan['partition'].get('test_name', 'test')
+        ds = tv.ImageFolder(root / test_name)
+        records = inventory(ds)
+        classes = list(ds.classes)
+        groups = resolve_groups(cfg, records, prefix=f'{test_name}/')
+    elif kind == 'all_holdout':
+        full = tv.ImageFolder(root)
+        records_all = inventory(full)
+        if digest(records_all) != plan['partition']['inventory_hash']:
+            raise RuntimeError('ALL holdout source changed since development split.')
+        ids = plan['partition']['test_indices']
+        ds = Subset(full, ids)
+        records = [records_all[i] for i in ids]
+        classes = list(full.classes)
+        all_groups = resolve_groups(cfg, records_all)
+        groups = [all_groups[i] for i in ids] if all_groups else None
+    else:
+        raise RuntimeError('Invalid partition mode.')
+    if classes != plan['classes']:
+        raise RuntimeError('Development/test class mapping mismatch.')
+    if set(labels(ds)) != set(range(len(classes))):
+        raise RuntimeError('Test set must contain every class in the locked mapping.')
+    overlap = {r['sha256'] for r in records} & {r['sha256'] for r in plan['records']}
+    if overlap:
+        raise RuntimeError(f'Data leakage: {len(overlap)} identical images shared by development/test. '
+                           'Evaluation aborted; curate a new benchmark, never silently drop test samples.')
+    if groups is not None and set(groups) & set(plan['groups']):
+        raise RuntimeError('Patient/group leakage between development and test; evaluation aborted.')
+    return ds, records
+
+
+def test_architecture(name, cfg, plan, output, model, lock, download=False):
+    """One-time untouched-test evaluation of one architecture's locked
+    checkpoint. Safe to call repeatedly: returns the saved result instead of
+    re-reading the test set if this exact lock was already evaluated."""
+    directory = output / name / 'locked' / model
+    if (directory / 'test_result.json').exists():
+        result = read_json(directory / 'test_result.json')
+        if result['lock_hash'] != digest(lock):
+            raise RuntimeError('Previous test result belongs to another lock.')
+        print(f'{model}: test already evaluated (accuracy={result["metrics"]["accuracy"]:.4f}).', flush=True)
+        return result
+    selection = lock['selection']
+    ds, records = untouched_test_data(name, cfg, plan, download)
+    test_hash = digest(records)
+    started_path = directory / 'test_started.json'
+    ticket = {'lock_hash': digest(lock), 'test_fingerprint': test_hash}
+    if started_path.exists() and read_json(started_path) != ticket:
+        raise RuntimeError('Interrupted evaluation cannot resume with a different lock/test set.')
+    atomic_json(started_path, ticket)
+    seed_all(cfg['seed'] + 800000)
+    net = model_for(model, len(plan['classes']), False)
+    checkpoint = load_checkpoint(directory / 'best.pt')
+    if checkpoint['identity'] != selection['identity']:
+        raise RuntimeError('Checkpoint selection identity mismatch.')
+    net.load_state_dict(checkpoint['model'])
+    net.to(cfg['device'])
+    result, y, pred, probs = evaluate(net, loader(ds, list(range(len(ds))), cfg, False, cfg['seed']),
+                                      cfg['device'], len(plan['classes']))
+    save_classification_reports(directory, y, pred, probs, plan['classes'], stem='test')
+    if cfg.get('save_probabilities', True):
+        save_predictions(net, ds, list(range(len(ds))), cfg, directory / 'test_probabilities.npz')
+    atomic_json(directory / 'test_predictions.json', {'ids': [r['id'] for r in records],
+                                                       'targets': y, 'predictions': pred})
+    test_result = {**ticket, 'dataset': name, 'model': model, 'n_test': len(ds), 'metrics': result,
+                   'selection': selection, 'evaluated_at_utc': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())}
+    atomic_json(directory / 'test_result.json', test_result)
+    artifacts = [directory / 'test_result.json', directory / 'test_confusion_matrix.png',
+                 directory / 'test_roc_curve.png', directory / 'test_classification_report.json']
+    with Tracker(digest(ticket), f'{name}-{model}-test', name,
+                 {'lock': lock, 'test_fingerprint': test_hash}, 'locked-test') as tracker:
+        tracker.summary({k: v for k, v in result.items() if not isinstance(v, (list, dict))})
+        tracker.artifact([p for p in artifacts if p.exists()])
+    print(f'{model}: test accuracy {result["accuracy"]:.4f} (n={len(ds)}).', flush=True)
+    del net
+    gc.collect()
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
+    return test_result
+
+
 def lock_selected(name, ds, plan, cfg, output):
+    """Legacy global-winner lock: refits only the single best (architecture,
+    ratio) pair across the whole candidate set, at the old single-directory
+    path `locked/`. Superseded by benchmark()'s automatic per-architecture
+    lock_architecture()/test_architecture() calls, which now lock and test
+    every architecture at its own best ratio as soon as that architecture's
+    training finishes, not only the eventual overall winner. Kept only for
+    backward compatibility with `--lock DATASET` / orchestrator jobs that
+    still invoke it explicitly; by the time it runs, every architecture
+    already has its own locked+tested checkpoint under `locked/<model>/`."""
     # log_tracking=False: this re-aggregate is only to pick the winner -- the
     # DERMS-R summary for every (model, ratio) was already logged once when
     # benchmark() produced these results; re-logging here would duplicate it.
@@ -497,7 +678,7 @@ def main():
             if args.lock:
                 lock_selected(name, ds, plan, cfg, output)
             elif not args.prepare_only:
-                benchmark(name, ds, plan, cfg, output)
+                benchmark(name, ds, plan, cfg, output, download=args.download)
 
 
 

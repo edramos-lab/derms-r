@@ -1210,7 +1210,7 @@ This equation, together with the operating-point selection procedure, constitute
 
 # Repository implementation
 
-This package trains a development-only candidate set, scores every architecture × ratio with canonical DERMS-R, then optionally locks one winner for a separately evaluated test set.
+This package trains a development-only candidate set, scores every architecture × ratio with canonical DERMS-R, then locks and tests **each architecture at its own best ratio automatically, as soon as that architecture's own 5-ratio × 5-fold sweep finishes** — not only a single overall winner picked after every architecture has finished. Each architecture's held-out test result lands under `results/<dataset>/locked/<model>/` independently of every other architecture's results; a lock/test failure for one architecture is logged and does not stop the run or affect the remaining architectures.
 
 Defaults run **12 architectures × 5 ratios × 5 folds = 300 fits per dataset** (1,500 fits for all five datasets), plus one final refit per selected dataset. This is an implementation package, not a completed scientific benchmark.
 
@@ -1230,17 +1230,23 @@ python smoke_test.py
 
 The registry pins explicit ImageNet-1k checkpoint tags in `timm==1.0.29`. Aliases are: `resnet50`, `efficientnet_b0`, `efficientnetv2_s`, `convnextv2_tiny`, `xception41`, `vit_base`, `deit3_base`, `swin_tiny`, `maxvit_tiny`, `nextvit_base`, `efficientvit_b0`, `mobilenetv4`. Missing IDs, unavailable weights, deterministic-operation failures, and training errors stop the run; models are never substituted.
 
-## Run, resume, lock, evaluate
+## Run, resume, evaluate
 
 ```bash
 python train.py --data ./datasets --output ./results/cifar10 --datasets cifar10 --download
 python train.py --data ./datasets --output ./results/cifar10 --datasets cifar10 --resume
-python train.py --data ./datasets --output ./results/cifar10 --datasets cifar10 --resume --lock cifar10
-python test.py --output ./results/cifar10 --dataset cifar10
 python analyze.py --output ./results/cifar10
 ```
 
-`--lock` requires the complete configured candidate set. It selects the highest raw DERMS-R over all architecture × ratio operating points (ties: model alias alphabetically, then ascending ratio) and saves the selection **before** refitting. It does not first keep the highest-accuracy ratio.
+No separate `--lock` step is needed for the normal case: once an architecture's full 5×5 candidate set finishes, `train.py` immediately refits it at its own best ratio (highest raw DERMS-R over that architecture's 5 ratios — never filtering by max accuracy first) and evaluates that refit once on the official held-out test split, before moving on to the next architecture. Results land at `results/<dataset>/locked/<model>/{lock.json,test_result.json,...}` for every architecture that completed, independently of how the others scored or whether they locked/tested successfully.
+
+If one architecture's automatic lock or test step failed (see the `train.py` log for why — e.g. a transient error), retry just that architecture without repeating any training:
+
+```bash
+python test.py --output ./results/cifar10 --dataset cifar10 --model efficientvit_b0
+```
+
+`train.py --resume --lock cifar10` (no `--model`) and `test.py --output ... --dataset cifar10` (no `--model`) still work as before: a legacy, single global-winner lock across the whole candidate set at `results/<dataset>/locked/` (no per-model subdirectory), kept for backward compatibility. By the time it would run, every architecture already has its own locked-and-tested checkpoint from the automatic per-architecture flow above, so it is rarely needed.
 
 Exponents and scale constants are configurable (`--alpha`, `--beta`, `--gamma`, `--delta`, `--p0`, `--sigma0`) and default to the canonical baseline. Changing them requires a new output directory.
 

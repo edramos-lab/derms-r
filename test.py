@@ -14,7 +14,7 @@ from derms.plots import save_classification_reports
 def untouched_test(name, cfg, plan, download):
     root = Path(cfg['data']) / name
     kind = plan['partition']['kind']
-    if name != 'all':
+    if name not in b.IMAGEFOLDER_DATASETS:
         ds = b.official(name, root, test=True, download=download)
         records = b.inventory(ds)
         classes = list(getattr(ds, 'classes', [str(i) for i in sorted(set(b.labels(ds)))]))

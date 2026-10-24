@@ -198,7 +198,7 @@ def development(name, cfg, download=False):
     root = Path(cfg['data']) / name
     partition = {'kind': 'official'}
     groups = None
-    if name != 'all':
+    if name not in IMAGEFOLDER_DATASETS:
         ds = official(name, root, download=download)
         records = inventory(ds)
         classes = list(getattr(ds, 'classes', [str(i) for i in sorted(set(labels(ds)))]))

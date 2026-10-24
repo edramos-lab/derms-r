@@ -438,7 +438,7 @@ def untouched_test_data(name, cfg, plan, download):
     the same leakage checks test.py has always applied before first opening it."""
     root = Path(cfg['data']) / name
     kind = plan['partition']['kind']
-    if name != 'all':
+    if name not in IMAGEFOLDER_DATASETS:
         ds = official(name, root, test=True, download=download)
         records = inventory(ds)
         classes = list(getattr(ds, 'classes', [str(i) for i in sorted(set(labels(ds)))]))

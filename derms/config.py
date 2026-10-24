@@ -21,6 +21,9 @@ REGISTRY = {
     'efficientvit_b0': 'efficientvit_b0.r224_in1k',
     'mobilenetv4': 'mobilenetv4_conv_small.e2400_r224_in1k',
 }
-DATASETS = ('cifar10', 'cifar100', 'flowers102', 'food101', 'all')
+DATASETS = ('cifar10', 'cifar100', 'flowers102', 'food101', 'all', 'bloodmnist')
+# Dataset names backed by this repo's own ImageFolder layout (development/test
+# folders under datasets/<name>), as opposed to a torchvision-provided dataset.
+IMAGEFOLDER_DATASETS = ('all', 'bloodmnist')
 MEAN, STD = (0.485, 0.456, 0.406), (0.229, 0.224, 0.225)
 SCHEMA = 5

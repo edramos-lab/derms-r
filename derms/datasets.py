@@ -11,6 +11,7 @@ import gc
 import hashlib
 import importlib.metadata
 import json
+import re
 import math
 import platform
 import random
@@ -85,7 +86,9 @@ def inferred_groups(records):
     for record in records:
         relative = Path(record['id'])
         class_name = relative.parts[0] if len(relative.parts) > 1 else ''
-        groups.append(f'{class_name}/{base_id(relative.name)}')
+        # Roboflow exports write augmented copies as <name>_jpg.rf.<hash>.jpg; they share a source image.
+        stem = re.sub(r'\.rf\.[0-9a-f]+(?=\.[^.]+$)', '', relative.name)
+        groups.append(f'{class_name}/{base_id(stem)}')
     return groups
 
 

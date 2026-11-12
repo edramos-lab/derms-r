@@ -74,6 +74,7 @@ DATASET_CLASSES = {
     "flowers102": 102,
     "food101": 101,
     "all": None,
+    "Footprint-Type": 9,
 }
 
 

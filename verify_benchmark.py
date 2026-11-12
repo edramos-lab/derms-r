@@ -98,7 +98,7 @@ class ProtocolTests(unittest.TestCase):
             return list(range(10))
         with patch.object(b.tv, 'CIFAR10', side_effect=fake), patch.object(b.tv, 'CIFAR100', side_effect=fake), \
              patch.object(b.tv, 'Flowers102', side_effect=fake), patch.object(b.tv, 'Food101', side_effect=fake):
-            for name in b.DATASETS[:-1]:
+            for name in (n for n in b.DATASETS if n not in b.IMAGEFOLDER_DATASETS):
                 b.official(name, '/unused')
         self.assertEqual(calls, [{'train': True, 'download': False}, {'train': True, 'download': False},
             {'split': 'train', 'download': False}, {'split': 'val', 'download': False},

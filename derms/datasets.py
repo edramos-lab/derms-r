@@ -280,7 +280,10 @@ def worker_seed(worker_id):
 
 def loader(ds, indices, cfg, training, seed):
     return DataLoader(Images(ds, indices, cfg, training and cfg['augmentation'], seed),
-                      batch_size=cfg['batch_size'], shuffle=training, drop_last=False,
+                      batch_size=cfg['batch_size'], shuffle=training,
+                      # Drop a ragged final training batch (BatchNorm models crash on a batch of 1), but never
+                      # when that would leave no batch at all (subset smaller than the batch size).
+                      drop_last=training and len(indices) > cfg['batch_size'],
                       num_workers=cfg['workers'], pin_memory=cfg['device'].startswith('cuda'),
                       worker_init_fn=worker_seed, generator=torch.Generator().manual_seed(seed))
 

@@ -225,53 +225,61 @@ def run_identity(cfg, plan, name, ratio, fold):
     return digest({'config': cfg, 'split_hash': plan['hash'], 'model': name, 'ratio': ratio, 'fold': fold})
 
 
-def aggregate(name, cfg, plan, output, log_tracking=True):
+def _cell_summary(name, cfg, plan, output, model, ratio, n_folds, params):
+    """One (architecture, ratio) cell: its completed fold results and the scored summary row."""
+    cell = []
+    for fold in range(n_folds):
+        directory = output / name / model / f'r{ratio:.2f}' / f'fold{fold}'
+        path = directory / 'result.json'
+        if not path.exists():
+            raise RuntimeError(f'Incomplete candidate set: {path}')
+        row = read_json(path)
+        if row['identity'] != run_identity(cfg, plan, model, ratio, fold):
+            raise RuntimeError(f'Stale result: {path}')
+        if file_hash(directory / 'best.pt') != row['checkpoint_sha256']:
+            raise RuntimeError(f'Modified checkpoint: {directory}')
+        cell.append(row)
+    fold_accuracies = [r['metrics']['accuracy'] for r in cell]
+    num_params = cell[0]['profile']['trainable_parameters']
+    # Nominal operating-point ratio r is fixed; realized fractions are recorded, not scored.
+    scored = derms_r(fold_accuracies, num_params, ratio, **params)
+    s = {'dataset': name, 'architecture': model, 'model': model, 'timm_id': REGISTRY[model],
+         'num_parameters': num_params, 'data_ratio': ratio, 'ratio': ratio,
+         'number_of_folds': n_folds,
+         'realized_ratio_mean': float(np.mean([r['realized_ratio'] for r in cell])),
+         'best_epoch_median': int(np.median([r['best_epoch'] for r in cell]))}
+    for k, acc in enumerate(fold_accuracies, 1):
+        s[f'fold_{k}_accuracy'] = acc
+    s['mean_validation_accuracy'] = scored['mean_accuracy']
+    s['sd_validation_accuracy'] = scored['sd_accuracy']
+    s['performance_component'] = scored['performance']
+    s['data_efficiency_component'] = scored['data_efficiency']
+    s['complexity_efficiency_component'] = scored['complexity_efficiency']
+    s['stability_component'] = scored['stability']
+    s['derms_r_raw'] = scored['derms_r']
+    for key in ('accuracy', 'precision_macro', 'recall_macro', 'f1_macro', 'mcc', 'loss', 'roc_auc_macro_ovr'):
+        values = [r['metrics'].get(key) for r in cell]
+        if any(v is None for v in values):
+            s[f'{key}_mean'], s[f'{key}_std'] = None, None
+        else:
+            s[f'{key}_mean'], s[f'{key}_std'] = float(np.mean(values)), float(np.std(values, ddof=1))
+    for key in ('latency_ms_mean', 'flops', 'cuda_inference_peak_bytes'):
+        values = [r['profile'].get(key) for r in cell]
+        s[key + '_mean'] = float(np.mean(values)) if all(v is not None for v in values) else None
+    s['realized_ratio_std'] = float(np.std([r['realized_ratio'] for r in cell], ddof=1))
+    return cell, s
+
+
+def aggregate(name, cfg, plan, output, log_tracking=True, models=None):
+    """Summarize completed sweeps. `models` limits it to architectures already finished
+    (a provisional summary mid-run); cfg itself must stay untouched since run identities hash it."""
     rows, summary = [], []
     params = metric_kwargs(cfg)
     n_folds = int(cfg.get('folds', FOLDS))
-    for model in cfg['models']:
+    for model in models or cfg['models']:
         for ratio in RATIOS:
-            cell = []
-            for fold in range(n_folds):
-                directory = output / name / model / f'r{ratio:.2f}' / f'fold{fold}'
-                path = directory / 'result.json'
-                if not path.exists():
-                    raise RuntimeError(f'Incomplete candidate set: {path}')
-                row = read_json(path)
-                if row['identity'] != run_identity(cfg, plan, model, ratio, fold):
-                    raise RuntimeError(f'Stale result: {path}')
-                if file_hash(directory / 'best.pt') != row['checkpoint_sha256']:
-                    raise RuntimeError(f'Modified checkpoint: {directory}')
-                cell.append(row)
+            cell, s = _cell_summary(name, cfg, plan, output, model, ratio, n_folds, params)
             rows.extend(cell)
-            fold_accuracies = [r['metrics']['accuracy'] for r in cell]
-            num_params = cell[0]['profile']['trainable_parameters']
-            # Nominal operating-point ratio r is fixed; realized fractions are recorded, not scored.
-            scored = derms_r(fold_accuracies, num_params, ratio, **params)
-            s = {'dataset': name, 'architecture': model, 'model': model, 'timm_id': REGISTRY[model],
-                 'num_parameters': num_params, 'data_ratio': ratio, 'ratio': ratio,
-                 'number_of_folds': n_folds,
-                 'realized_ratio_mean': float(np.mean([r['realized_ratio'] for r in cell])),
-                 'best_epoch_median': int(np.median([r['best_epoch'] for r in cell]))}
-            for k, acc in enumerate(fold_accuracies, 1):
-                s[f'fold_{k}_accuracy'] = acc
-            s['mean_validation_accuracy'] = scored['mean_accuracy']
-            s['sd_validation_accuracy'] = scored['sd_accuracy']
-            s['performance_component'] = scored['performance']
-            s['data_efficiency_component'] = scored['data_efficiency']
-            s['complexity_efficiency_component'] = scored['complexity_efficiency']
-            s['stability_component'] = scored['stability']
-            s['derms_r_raw'] = scored['derms_r']
-            for key in ('accuracy', 'precision_macro', 'recall_macro', 'f1_macro', 'mcc', 'loss', 'roc_auc_macro_ovr'):
-                values = [r['metrics'].get(key) for r in cell]
-                if any(v is None for v in values):
-                    s[f'{key}_mean'], s[f'{key}_std'] = None, None
-                else:
-                    s[f'{key}_mean'], s[f'{key}_std'] = float(np.mean(values)), float(np.std(values, ddof=1))
-            for key in ('latency_ms_mean', 'flops', 'cuda_inference_peak_bytes'):
-                values = [r['profile'].get(key) for r in cell]
-                s[key + '_mean'] = float(np.mean(values)) if all(v is not None for v in values) else None
-            s['realized_ratio_std'] = float(np.std([r['realized_ratio'] for r in cell], ddof=1))
             summary.append(s)
             if log_tracking:
                 derms_identity = digest({'config': cfg, 'split_hash': plan['hash'], 'model': model,
@@ -311,6 +319,7 @@ def aggregate(name, cfg, plan, output, log_tracking=True):
 
 def benchmark(name, ds, plan, cfg, output, download=False):
     nclasses = len(plan['classes'])
+    finished = []
     for model in cfg['models']:
         for ratio in RATIOS:
             for fold, split in enumerate(plan['folds']):
@@ -360,10 +369,21 @@ def benchmark(name, ds, plan, cfg, output, download=False):
         # -- is exactly what a held-out comparison is for.
         try:
             lock = lock_architecture(name, ds, plan, cfg, output, model)
-            test_architecture(name, cfg, plan, output, model, lock, download)
+            test_result = test_architecture(name, cfg, plan, output, model, lock, download)
+            report = architecture_report(name, cfg, plan, output, model, lock, test_result)
+            atomic_json(output / name / 'locked' / model / 'derms_r.json', report)
+            print_architecture_report(report)
         except Exception as error:
             print(f'{model}: lock/test failed, continuing to the next architecture: '
                   f'{type(error).__name__}: {error}', flush=True)
+        # Provisional summary so the dashboard shows DERMS-R per architecture as each finishes,
+        # not only after every architecture is done. Ranks/normalization are among finished ones only;
+        # the final aggregate below overwrites it.
+        try:
+            finished.append(model)
+            aggregate(name, cfg, plan, output, log_tracking=False, models=finished)
+        except Exception as error:
+            print(f'{model}: provisional summary skipped: {type(error).__name__}: {error}', flush=True)
     return aggregate(name, cfg, plan, output)
 
 
@@ -375,22 +395,44 @@ def architecture_scores(name, cfg, plan, output, model):
     n_folds = int(cfg.get('folds', FOLDS))
     rows = []
     for ratio in RATIOS:
-        cell = []
-        for fold in range(n_folds):
-            directory = output / name / model / f'r{ratio:.2f}' / f'fold{fold}'
-            path = directory / 'result.json'
-            row = read_json(path)
-            if row['identity'] != run_identity(cfg, plan, model, ratio, fold):
-                raise RuntimeError(f'Stale result: {path}')
-            if file_hash(directory / 'best.pt') != row['checkpoint_sha256']:
-                raise RuntimeError(f'Modified checkpoint: {directory}')
-            cell.append(row)
-        fold_accuracies = [r['metrics']['accuracy'] for r in cell]
-        num_params = cell[0]['profile']['trainable_parameters']
-        scored = derms_r(fold_accuracies, num_params, ratio, **params)
-        rows.append({'ratio': ratio, 'derms_r_raw': scored['derms_r'],
-                      'best_epoch_median': int(np.median([r['best_epoch'] for r in cell]))})
+        _, s = _cell_summary(name, cfg, plan, output, model, ratio, n_folds, params)
+        rows.append({'ratio': ratio, 'derms_r_raw': s['derms_r_raw'],
+                     'best_epoch_median': s['best_epoch_median'], 'summary': s})
     return rows
+
+
+DERMS_COMPONENT_KEYS = ('mean_validation_accuracy', 'sd_validation_accuracy', 'performance_component',
+                        'data_efficiency_component', 'complexity_efficiency_component',
+                        'stability_component', 'derms_r_raw')
+
+
+def architecture_report(name, cfg, plan, output, model, lock, test_result=None):
+    """Everything DERMS-R says about one finished architecture: all five ratios with
+    the four terms, the locked one marked, next to its held-out test accuracy. The
+    test accuracy is a single number, so DERMS-R itself (which needs fold SDs) is the CV one."""
+    rows = architecture_scores(name, cfg, plan, output, model)
+    locked_ratio = lock['selection']['ratio']
+    ratios = [{'ratio': r['ratio'], 'locked': r['ratio'] == locked_ratio,
+               **{k: r['summary'][k] for k in DERMS_COMPONENT_KEYS}} for r in rows]
+    return {'dataset': name, 'model': model, 'num_parameters': rows[0]['summary']['num_parameters'],
+            'locked_ratio': locked_ratio, 'ratios': ratios,
+            'locked_derms_r': next(r['derms_r_raw'] for r in rows if r['ratio'] == locked_ratio),
+            'test_accuracy': test_result['metrics']['accuracy'] if test_result else None,
+            'test_n': test_result['n_test'] if test_result else None}
+
+
+def print_architecture_report(report):
+    print(f'{report["model"]}: DERMS-R (cross-validation, {report["num_parameters"]:,} trainable parameters)', flush=True)
+    print('    ratio   acc_mean  acc_sd   perf    data_eff cplx_eff stability  DERMS-R', flush=True)
+    for r in report['ratios']:
+        mark = '  <- locked' if r['locked'] else ''
+        print(f'    {r["ratio"]:.2f}   {r["mean_validation_accuracy"]:.4f}  {r["sd_validation_accuracy"]:.4f}  '
+              f'{r["performance_component"]:.4f}  {r["data_efficiency_component"]:.4f}   '
+              f'{r["complexity_efficiency_component"]:.4f}   {r["stability_component"]:.4f}   '
+              f'{r["derms_r_raw"]:.4f}{mark}', flush=True)
+    if report['test_accuracy'] is not None:
+        print(f'    held-out test accuracy {report["test_accuracy"]:.4f} (n={report["test_n"]}) at the locked ratio '
+              f'{report["locked_ratio"]:.2f}; DERMS-R above is the CV score (it needs fold SDs).', flush=True)
 
 
 def lock_architecture(name, ds, plan, cfg, output, model):
@@ -516,6 +558,12 @@ def test_architecture(name, cfg, plan, output, model, lock, download=False):
     with Tracker(digest(ticket), f'{name}-{model}-test', name,
                  {'lock': lock, 'test_fingerprint': test_hash}, 'locked-test') as tracker:
         tracker.summary({k: v for k, v in result.items() if not isinstance(v, (list, dict))})
+        try:
+            locked = next(r for r in architecture_report(name, cfg, plan, output, model, lock)['ratios'] if r['locked'])
+            tracker.summary({'cv_derms_r': locked['derms_r_raw'], 'cv_data_ratio': locked['ratio'],
+                             **{f'cv_{k}': locked[k] for k in DERMS_COMPONENT_KEYS if k != 'derms_r_raw'}})
+        except Exception as error:
+            print(f'{model}: could not log CV DERMS-R with the test run: {type(error).__name__}: {error}', flush=True)
         tracker.artifact([p for p in artifacts if p.exists()])
     print(f'{model}: test accuracy {result["accuracy"]:.4f} (n={len(ds)}).', flush=True)
     del net

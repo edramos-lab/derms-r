@@ -24,6 +24,7 @@ def _load_protocol():
 _PROTOCOL = _load_protocol()
 DATASETS = _PROTOCOL.DATASETS
 FOLDS = _PROTOCOL.FOLDS
+CV_STRATEGIES = _PROTOCOL.CV_STRATEGIES
 RATIOS = _PROTOCOL.RATIOS
 REGISTRY = _PROTOCOL.REGISTRY
 
@@ -168,6 +169,7 @@ class RunSpec:
     download: bool = False
     label: str = ""
     window: bool = False
+    cv_strategy: str = "StratifiedKFold"
 
 
 def fmt_float(value):
@@ -322,6 +324,9 @@ def _shared(payload, datasets, models):
     holdout = _as_number(payload.get("holdout", 0.20), "holdout")
     if seed < 0 or not 0 < holdout < 1:
         raise ConfigError("Seed must be non-negative and holdout must be between 0 and 1.")
+    cv_strategy = str(payload.get("cv_strategy") or "StratifiedKFold")
+    if cv_strategy not in CV_STRATEGIES:
+        raise ConfigError(f"CV strategy must be one of {', '.join(CV_STRATEGIES)}.")
     experiment = str(payload.get("mlflow_experiment") or "derms-r-benchmark").strip()
     if not experiment:
         raise ConfigError("MLflow experiment name cannot be empty.")
@@ -338,6 +343,7 @@ def _shared(payload, datasets, models):
         "device": device,
         "seed": seed,
         "holdout": holdout,
+        "cv_strategy": cv_strategy,
         "augmentation": bool(payload.get("augmentation", True)),
         "pretrained": bool(payload.get("pretrained", True)),
         "experiment": experiment,
@@ -422,6 +428,7 @@ def train_args(run: RunSpec, tracking_uri: str | None, resume: bool = False):
         "--weight-decay", fmt_float(run.weight_decay),
         "--seed", str(run.seed),
         "--holdout", fmt_float(run.holdout),
+        "--cv-strategy", run.cv_strategy,
         "--device", run.device,
     ]
     if not run.augmentation:
@@ -502,6 +509,7 @@ def lock_args(job: dict, dataset: str, tracking_uri: str | None):
         "--weight-decay", fmt_float(job["weight_decay"]),
         "--seed", str(job["seed"]),
         "--holdout", fmt_float(job["holdout"]),
+        "--cv-strategy", job.get("cv_strategy", "StratifiedKFold"),
         "--device", job["device"],
     ]
     if not job.get("augmentation", True):

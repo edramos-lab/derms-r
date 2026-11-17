@@ -7,6 +7,7 @@ DELTA = 0.5
 P0 = 1_000_000.0
 SIGMA0 = 0.001
 FOLDS = 5
+CV_STRATEGIES = ('StratifiedKFold', 'StratifiedGroupKFold')
 REGISTRY = {
     'resnet50': 'resnet50.a1_in1k',
     'efficientnet_b0': 'efficientnet_b0.ra_in1k',

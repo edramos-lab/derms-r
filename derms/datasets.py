@@ -26,7 +26,7 @@ import numpy as np
 import pandas as pd
 from PIL import Image
 from sklearn.metrics import accuracy_score, precision_recall_fscore_support, matthews_corrcoef
-from sklearn.model_selection import StratifiedKFold, train_test_split
+from sklearn.model_selection import StratifiedGroupKFold, StratifiedKFold, train_test_split
 import timm
 import torch
 from torch import nn
@@ -168,18 +168,30 @@ def nested(units, uy, eligible, seed):
             for u in order[:max(1, int(math.floor(len(order)*r)))]] ) for r in RATIOS}
 
 
-def folds_for(records, groups, seed):
+def cv_splits(units, uy, seed, strategy):
+    if strategy == 'StratifiedKFold':
+        return StratifiedKFold(FOLDS, shuffle=True, random_state=seed).split(units, uy)
+    if strategy == 'StratifiedGroupKFold':
+        # Balance by image count: each unit contributes all its images, units never split across folds.
+        sizes = np.asarray([len(u) for u in units])
+        rows = np.repeat(np.arange(len(units)), sizes)
+        splitter = StratifiedGroupKFold(FOLDS, shuffle=True, random_state=seed).split(rows, uy[rows], groups=rows)
+        return ((np.unique(rows[tr]), np.unique(rows[va])) for tr, va in splitter)
+    raise ValueError(f'Unknown cv strategy {strategy!r}; expected one of {CV_STRATEGIES}.')
+
+
+def folds_for(records, groups, seed, strategy='StratifiedKFold'):
     units, uy = make_units(records, groups)
     counts = np.bincount(uy)
     if min(counts) < FOLDS:
         raise ValueError(f'{FOLDS}-fold stratification needs at least {FOLDS} independent units in every class.')
     folds = []
-    for k, (tr, va) in enumerate(StratifiedKFold(FOLDS, shuffle=True, random_state=seed).split(units, uy)):
+    for k, (tr, va) in enumerate(cv_splits(units, uy, seed, strategy)):
         subsets = nested(units, uy, tr, seed + 100 + k)
         folds.append({'train': expand(units, tr), 'val': expand(units, va), 'subsets': subsets})
     final_subsets = nested(units, uy, np.arange(len(units)), seed + 900)
     return {'folds': folds, 'final_subsets': final_subsets, 'independent_units': len(units),
-            'cv': 'StratifiedKFold',
+            'cv': strategy,
             'stratification_unit': 'image' if len(units) == len(records) else 'duplicate/patient group'}
 
 
@@ -238,7 +250,7 @@ def prepare(name, cfg, output, download):
     ds, records, classes, groups, partition = development(name, cfg, download)
     plan = {'schema': SCHEMA, 'dataset': name, 'config_hash': digest(cfg),
             'records': records, 'classes': classes, 'groups': groups, 'partition': partition,
-            **folds_for(records, groups, cfg['seed'])}
+            **folds_for(records, groups, cfg['seed'], cfg.get('cv_strategy', 'StratifiedKFold'))}
     plan['hash'] = digest(plan)
     path = output / name / 'splits.json'
     if path.exists():

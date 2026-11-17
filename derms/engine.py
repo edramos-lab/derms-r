@@ -635,6 +635,7 @@ def parser():
     p.add_argument('--seed', type=int, default=42)
     p.add_argument('--holdout', type=float, default=0.20)
     p.add_argument('--all-groups', type=Path)
+    p.add_argument('--cv-strategy', choices=CV_STRATEGIES, default=CV_STRATEGIES[0])
     p.add_argument('--all-independent-images', action='store_true')
     p.add_argument('--pretrained', action=argparse.BooleanOptionalAction, default=True)
     p.add_argument('--augmentation', action=argparse.BooleanOptionalAction, default=True)
@@ -697,7 +698,8 @@ def main():
     torch.set_num_threads(args.threads)
     cfg = {k: str(v.resolve()) if isinstance(v, Path) else v for k, v in vars(args).items()
            if not k.startswith(('wandb', 'mlflow'))
-           and k not in ('output', 'download', 'resume', 'verify_models', 'prepare_only', 'lock')}
+           and k not in ('output', 'download', 'resume', 'verify_models', 'prepare_only', 'lock')
+           and not (k == 'cv_strategy' and v == CV_STRATEGIES[0])}  # default omitted: keeps old config hashes valid
     cfg.update(schema=SCHEMA, ratios=list(RATIOS), folds=FOLDS, image_size=224,
                normalization={'mean': MEAN, 'std': STD}, precision='float32',
                source_hashes={n: file_hash(project_root() / n) for n in source_files()},

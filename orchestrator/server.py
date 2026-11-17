@@ -199,7 +199,7 @@ class App:
                         else:
                             cv_k = int((query.get("cv_k") or ["5"])[0])
                             cv_strategy = (query.get("cv_strategy") or ["kfold"])[0]
-                            if cv_strategy not in {"kfold", "stratified"}:
+                            if cv_strategy not in {"kfold", "stratified", "stratified_group"}:
                                 cv_strategy = "kfold"
                             self._send_json(app.eda_insights(dataset_id, cv_k=cv_k, cv_strategy=cv_strategy))
                     elif path == "/api/eda/explain":
@@ -1047,6 +1047,7 @@ class App:
                 "weight_decay": run.weight_decay,
                 "seed": run.seed,
                 "holdout": run.holdout,
+                "cv_strategy": run.cv_strategy,
                 "augmentation": run.augmentation,
                 "pretrained": run.pretrained,
                 "mlflow_experiment": run.experiment,

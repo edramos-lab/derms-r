@@ -18,6 +18,7 @@ Two data sources feed this, kept separate for speed:
 import base64
 import io
 import pickle
+import re
 from collections import Counter
 from pathlib import Path
 
@@ -73,16 +74,28 @@ def _full_cifar10(path: Path):
     }
 
 
+def _group_id(filename):
+    """Patient/sample group from a filename, mirroring derms.datasets.inferred_groups."""
+    stem = re.sub(r"\.rf\.[0-9a-f]+(?=\.[^.]+$)", "", filename)
+    try:
+        from prepare_dataset import base_id
+        return base_id(stem)
+    except ImportError:
+        return stem
+
+
 def _full_class_folders(path: Path):
     classes = sorted(p for p in path.iterdir() if p.is_dir() and not p.name.startswith("."))
     class_names = [c.name for c in classes]
     ordered_labels = []
+    ordered_groups = []
     train_count = test_count = validation_count = other_count = 0
     for idx, class_dir in enumerate(classes):
         for entry in sorted(class_dir.iterdir()):
             if entry.suffix.lower() not in IMAGE_SUFFIXES:
                 continue
             ordered_labels.append(idx)
+            ordered_groups.append(f"{class_dir.name}/{_group_id(entry.name)}")
             lower = str(entry).lower()
             if "/train/" in lower:
                 train_count += 1
@@ -97,6 +110,7 @@ def _full_class_folders(path: Path):
     return {
         "class_names": class_names,
         "ordered_labels": ordered_labels,
+        "ordered_groups": ordered_groups,
         "train_count": train_count,
         "test_count": test_count,
         "validation_count": validation_count,
@@ -362,11 +376,27 @@ def _plot_sample_grid(images, labels, class_names):
     return _fig_to_formats()
 
 
-def _plot_crossval(ordered_labels, class_names, k, strategy):
+def _plot_crossval(ordered_labels, class_names, k, strategy, ordered_groups=None):
     n = len(ordered_labels)
     k = max(2, min(k, n))
     folds = [Counter() for _ in range(k)]
-    if strategy == "stratified":
+    grouped = False
+    if strategy == "stratified_group" and ordered_groups is not None:
+        from sklearn.model_selection import StratifiedGroupKFold
+        try:
+            splits = StratifiedGroupKFold(k, shuffle=True, random_state=42).split(
+                np.zeros(n), ordered_labels, groups=ordered_groups)
+            for f, (_, val) in enumerate(splits):
+                for i in val:
+                    folds[f][ordered_labels[i]] += 1
+            grouped = True
+        except ValueError:
+            pass  # too few groups per class for k folds
+    if strategy == "stratified_group" and not grouped:
+        strategy = "stratified"  # no usable group information; fall back
+    if grouped:
+        pass
+    elif strategy == "stratified":
         for i, label in enumerate(ordered_labels):
             folds[i % k][label] += 1
     else:
@@ -387,7 +417,7 @@ def _plot_crossval(ordered_labels, class_names, k, strategy):
         bottom += values
     plt.xlabel("Fold Number")
     plt.ylabel("Number of Samples")
-    plt.title(f"Cross-Validation Split ({strategy.capitalize()}, k={k})", fontsize=13, fontweight="bold")
+    plt.title(f"Cross-Validation Split ({strategy.replace('_', ' ').title()}, k={k})", fontsize=13, fontweight="bold")
     plt.xticks(range(k), [f"Fold {i + 1}" for i in range(k)])
     plt.legend(title="Classes", bbox_to_anchor=(1.02, 1), loc="upper left", fontsize=8)
     plt.tight_layout()
@@ -481,7 +511,7 @@ def dataset_insights(root: Path, name: str, cv_k: int = 5, cv_strategy: str = "k
     else:
         rgb_insights = None
 
-    crossval_plot, applied_k = _plot_crossval(ordered_labels, class_names, cv_k, cv_strategy)
+    crossval_plot, applied_k = _plot_crossval(ordered_labels, class_names, cv_k, cv_strategy, full.get("ordered_groups"))
 
     X = _mean_rgb_features(images)
     pca_coords, pca_explained = _pca_2d(X)

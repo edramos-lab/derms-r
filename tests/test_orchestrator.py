@@ -1035,3 +1035,18 @@ class EdaGroupIdTests(unittest.TestCase):
         self.assertEqual(_group_id("Sap_013 (12).jpg"), "Sap_013")
         self.assertEqual(_group_id("Snap_090 - Copy (2).jpg"), "Snap_090")
         self.assertEqual(_group_id("a_jpg.rf.8b5748c8a2e681c79f8afcf38835ed04.jpg"), "a_jpg")
+
+
+class NearDuplicateOptionTests(unittest.TestCase):
+    def test_threshold_reaches_the_training_command_only_when_set(self):
+        from orchestrator.launcher import train_args
+        off = train_args(parse_runs(fixed_payload())[0], None)
+        self.assertNotIn("--near-dup-threshold", off)
+        on = train_args(parse_runs(fixed_payload(near_dup_threshold=16))[0], None)
+        self.assertEqual(on[on.index("--near-dup-threshold") + 1], "16")
+
+    def test_threshold_is_bounded(self):
+        with self.assertRaises(ConfigError):
+            parse_runs(fixed_payload(near_dup_threshold=65))
+        with self.assertRaises(ConfigError):
+            parse_runs(fixed_payload(near_dup_threshold=-1))

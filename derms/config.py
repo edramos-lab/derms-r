@@ -7,6 +7,7 @@ DELTA = 0.5
 P0 = 1_000_000.0
 SIGMA0 = 0.001
 FOLDS = 5
+NEAR_DUP_HASH_SIZE = 16  # perceptual-hash side: 256 bits, as in prepare_dataset.py
 CV_STRATEGIES = ('StratifiedKFold', 'StratifiedGroupKFold', 'GroupKFold')
 REGISTRY = {
     'resnet50': 'resnet50.a1_in1k',

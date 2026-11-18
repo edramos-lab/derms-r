@@ -68,15 +68,44 @@ def image_array(ds, i):
     return np.asarray(image.convert('RGB') if isinstance(image, Image.Image) else image, dtype=np.uint8)
 
 
-def inventory(ds):
-    """Hash decoded RGB content so differently encoded exact duplicates also match."""
+def inventory(ds, near_dup=False):
+    """Hash decoded RGB content so differently encoded exact duplicates also match.
+    `near_dup` also records a 256-bit perceptual hash (same recipe as prepare_dataset.py)."""
     y = labels(ds)
     records = []
     for i in range(len(ds)):
         arr = image_array(ds, i)
         h = hashlib.sha256(str(arr.shape).encode() + arr.tobytes()).hexdigest()
-        records.append({'id': sample_id(ds, i), 'label': int(y[i]), 'sha256': h})
+        record = {'id': sample_id(ds, i), 'label': int(y[i]), 'sha256': h}
+        if near_dup:
+            import imagehash
+            record['phash'] = str(imagehash.phash(Image.fromarray(arr), hash_size=NEAR_DUP_HASH_SIZE))
+        records.append(record)
     return records
+
+
+def _phash_bits(records):
+    return np.array([np.unpackbits(np.frombuffer(bytes.fromhex(r['phash']), dtype=np.uint8)) for r in records],
+                    dtype=np.float32)
+
+
+def _near_pairs(a, b, threshold, same=False, chunk=1024):
+    """(i, j) with Hamming distance <= threshold between the rows of bit matrices a and b."""
+    for start in range(0, len(a), chunk):
+        block = a[start:start + chunk]
+        dist = block @ (1 - b).T + (1 - block) @ b.T
+        for i, j in np.argwhere(dist <= threshold):
+            if not same or start + i < j:
+                yield start + int(i), int(j)
+
+
+def near_duplicate_overlap(records, dev_records, threshold):
+    """Number of `records` within `threshold` bits of any development record."""
+    if not records or not dev_records:
+        return 0
+    if any('phash' not in r for r in records + dev_records):
+        raise RuntimeError('Near-duplicate check needs perceptual hashes; the split was built without --near-dup-threshold.')
+    return len({i for i, _ in _near_pairs(_phash_bits(records), _phash_bits(dev_records), threshold)})
 
 
 def inferred_groups(records):
@@ -124,8 +153,9 @@ def all_groups(path, records, prefix=''):
     return [mapping[prefix + r['id']] for r in records]
 
 
-def make_units(records, groups=None):
-    """Union exact duplicates and optional patient groups; prohibit label conflicts."""
+def make_units(records, groups=None, near_dup_threshold=0):
+    """Union exact duplicates, near-duplicates (perceptual hash within `near_dup_threshold` bits) and
+    optional patient groups; prohibit label conflicts."""
     parents = list(range(len(records)))
     def root(i):
         while parents[i] != i:
@@ -142,6 +172,10 @@ def make_units(records, groups=None):
                 parents[root(i)] = root(seen[key])
             else:
                 seen[key] = i
+    if near_dup_threshold:
+        bits = _phash_bits(records)
+        for i, j in _near_pairs(bits, bits, near_dup_threshold, same=True):
+            parents[root(i)] = root(j)
     buckets = {}
     for i in range(len(records)):
         buckets.setdefault(root(i), []).append(i)
@@ -183,8 +217,8 @@ def cv_splits(units, uy, seed, strategy):
     raise ValueError(f'Unknown cv strategy {strategy!r}; expected one of {CV_STRATEGIES}.')
 
 
-def folds_for(records, groups, seed, strategy='StratifiedKFold'):
-    units, uy = make_units(records, groups)
+def folds_for(records, groups, seed, strategy='StratifiedKFold', near_dup_threshold=0):
+    units, uy = make_units(records, groups, near_dup_threshold)
     counts = np.bincount(uy)
     if min(counts) < FOLDS:
         raise ValueError(f'{FOLDS}-fold stratification needs at least {FOLDS} independent units in every class.')
@@ -195,7 +229,8 @@ def folds_for(records, groups, seed, strategy='StratifiedKFold'):
     final_subsets = nested(units, uy, np.arange(len(units)), seed + 900)
     return {'folds': folds, 'final_subsets': final_subsets, 'independent_units': len(units),
             'cv': strategy,
-            'stratification_unit': 'image' if len(units) == len(records) else 'duplicate/patient group'}
+            'stratification_unit': 'image' if len(units) == len(records) else 'duplicate/patient group',
+            **({'near_dup_threshold': near_dup_threshold} if near_dup_threshold else {})}
 
 
 def official(name, root, test=False, download=False):
@@ -216,9 +251,10 @@ def development(name, cfg, download=False):
     root = Path(cfg['data']) / name
     partition = {'kind': 'official'}
     groups = None
+    near = bool(cfg.get('near_dup_threshold'))
     if name not in IMAGEFOLDER_DATASETS:
         ds = official(name, root, download=download)
-        records = inventory(ds)
+        records = inventory(ds, near)
         classes = list(getattr(ds, 'classes', [str(i) for i in sorted(set(labels(ds)))]))
     else:
         train_name, test_name = all_split_dirs(root)
@@ -227,14 +263,14 @@ def development(name, cfg, download=False):
             raise ValueError('ALL requires a matched pair development/test, train/test, or Training/Testing, or neither for flat holdout.')
         if train_name:
             ds = tv.ImageFolder(root / train_name)
-            records = inventory(ds)
+            records = inventory(ds, near)
             groups = resolve_groups(cfg, records, prefix=f'{train_name}/')
             partition = {'kind': 'all_folders', 'train_name': train_name, 'test_name': test_name}
         else:
             full = tv.ImageFolder(root)
-            all_records = inventory(full)
+            all_records = inventory(full, near)
             full_groups = resolve_groups(cfg, all_records)
-            units, uy = make_units(all_records, full_groups)
+            units, uy = make_units(all_records, full_groups, cfg.get('near_dup_threshold', 0))
             tr, te = train_test_split(np.arange(len(units)), test_size=cfg['holdout'],
                                      random_state=cfg['seed'], stratify=uy)
             train_ids, test_ids = expand(units, tr), expand(units, te)
@@ -251,9 +287,18 @@ def development(name, cfg, download=False):
 def prepare(name, cfg, output, download):
     print(f'{name}: fingerprinting development images and checking splits', flush=True)
     ds, records, classes, groups, partition = development(name, cfg, download)
+    threshold = cfg.get('near_dup_threshold', 0)
+    if threshold and partition['kind'] == 'all_folders':
+        # Fail before any training: fingerprinting the test folder reads pixels for hashing only.
+        test_records = inventory(tv.ImageFolder(Path(cfg['data']) / name / partition['test_name']), True)
+        shared = near_duplicate_overlap(test_records, records, threshold)
+        if shared:
+            raise RuntimeError(f'Near-duplicate leakage: {shared} test images are within {threshold} bits of a '
+                               'development image. Curate the benchmark (never silently drop test samples).')
     plan = {'schema': SCHEMA, 'dataset': name, 'config_hash': digest(cfg),
             'records': records, 'classes': classes, 'groups': groups, 'partition': partition,
-            **folds_for(records, groups, cfg['seed'], cfg.get('cv_strategy', 'StratifiedKFold'))}
+            **folds_for(records, groups, cfg['seed'], cfg.get('cv_strategy', 'StratifiedKFold'),
+                         cfg.get('near_dup_threshold', 0))}
     plan['hash'] = digest(plan)
     path = output / name / 'splits.json'
     if path.exists():

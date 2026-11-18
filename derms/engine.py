@@ -480,20 +480,21 @@ def untouched_test_data(name, cfg, plan, download):
     the same leakage checks test.py has always applied before first opening it."""
     root = Path(cfg['data']) / name
     kind = plan['partition']['kind']
+    near = bool(cfg.get('near_dup_threshold'))
     if name not in IMAGEFOLDER_DATASETS:
         ds = official(name, root, test=True, download=download)
-        records = inventory(ds)
+        records = inventory(ds, near)
         classes = list(getattr(ds, 'classes', [str(i) for i in sorted(set(labels(ds)))]))
         groups = None
     elif kind == 'all_folders':
         test_name = plan['partition'].get('test_name', 'test')
         ds = tv.ImageFolder(root / test_name)
-        records = inventory(ds)
+        records = inventory(ds, near)
         classes = list(ds.classes)
         groups = resolve_groups(cfg, records, prefix=f'{test_name}/')
     elif kind == 'all_holdout':
         full = tv.ImageFolder(root)
-        records_all = inventory(full)
+        records_all = inventory(full, near)
         if digest(records_all) != plan['partition']['inventory_hash']:
             raise RuntimeError('ALL holdout source changed since development split.')
         ids = plan['partition']['test_indices']
@@ -512,6 +513,9 @@ def untouched_test_data(name, cfg, plan, download):
     if overlap:
         raise RuntimeError(f'Data leakage: {len(overlap)} identical images shared by development/test. '
                            'Evaluation aborted; curate a new benchmark, never silently drop test samples.')
+    if near and near_duplicate_overlap(records, plan['records'], cfg['near_dup_threshold']):
+        raise RuntimeError('Near-duplicate leakage between development and test; evaluation aborted. '
+                           'Curate the benchmark, never silently drop test samples.')
     if groups is not None and set(groups) & set(plan['groups']):
         raise RuntimeError('Patient/group leakage between development and test; evaluation aborted.')
     return ds, records
@@ -637,6 +641,9 @@ def parser():
     p.add_argument('--all-groups', type=Path)
     p.add_argument('--cv-strategy', choices=CV_STRATEGIES, default=CV_STRATEGIES[0])
     p.add_argument('--all-independent-images', action='store_true')
+    p.add_argument('--near-dup-threshold', type=int, default=0,
+                   help='group images within this many bits of a 256-bit perceptual hash into one CV unit and '
+                        'refuse a test set containing such images; 0 disables (recommended for ALL: 16)')
     p.add_argument('--pretrained', action=argparse.BooleanOptionalAction, default=True)
     p.add_argument('--augmentation', action=argparse.BooleanOptionalAction, default=True)
     p.add_argument('--flip-probability', type=float, default=0.5)
@@ -699,7 +706,8 @@ def main():
     cfg = {k: str(v.resolve()) if isinstance(v, Path) else v for k, v in vars(args).items()
            if not k.startswith(('wandb', 'mlflow'))
            and k not in ('output', 'download', 'resume', 'verify_models', 'prepare_only', 'lock')
-           and not (k == 'cv_strategy' and v == CV_STRATEGIES[0])}  # default omitted: keeps old config hashes valid
+           and not (k == 'cv_strategy' and v == CV_STRATEGIES[0])  # defaults omitted: keep old config hashes valid
+           and not (k == 'near_dup_threshold' and not v)}
     cfg.update(schema=SCHEMA, ratios=list(RATIOS), folds=FOLDS, image_size=224,
                normalization={'mean': MEAN, 'std': STD}, precision='float32',
                source_hashes={n: file_hash(project_root() / n) for n in source_files()},

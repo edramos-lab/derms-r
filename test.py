@@ -14,20 +14,21 @@ from derms.plots import save_classification_reports
 def untouched_test(name, cfg, plan, download):
     root = Path(cfg['data']) / name
     kind = plan['partition']['kind']
+    near = bool(cfg.get('near_dup_threshold'))
     if name not in b.IMAGEFOLDER_DATASETS:
         ds = b.official(name, root, test=True, download=download)
-        records = b.inventory(ds)
+        records = b.inventory(ds, near)
         classes = list(getattr(ds, 'classes', [str(i) for i in sorted(set(b.labels(ds)))]))
         groups = None
     elif kind == 'all_folders':
         test_name = plan['partition'].get('test_name', 'test')
         ds = tv.ImageFolder(root / test_name)
-        records = b.inventory(ds)
+        records = b.inventory(ds, near)
         classes = list(ds.classes)
         groups = b.resolve_groups(cfg, records, prefix=f'{test_name}/')
     elif kind == 'all_holdout':
         full = tv.ImageFolder(root)
-        records_all = b.inventory(full)
+        records_all = b.inventory(full, near)
         if b.digest(records_all) != plan['partition']['inventory_hash']:
             raise RuntimeError('ALL holdout source changed since development split.')
         ids = plan['partition']['test_indices']
@@ -46,6 +47,9 @@ def untouched_test(name, cfg, plan, download):
     if overlap:
         raise RuntimeError(f'Data leakage: {len(overlap)} identical images shared by development/test. '
                            'Evaluation aborted; curate a new benchmark, never silently drop test samples.')
+    if near and b.near_duplicate_overlap(records, plan['records'], cfg['near_dup_threshold']):
+        raise RuntimeError('Near-duplicate leakage between development and test; evaluation aborted. '
+                           'Curate the benchmark, never silently drop test samples.')
     if groups is not None and set(groups) & set(plan['groups']):
         raise RuntimeError('Patient/group leakage between development and test; evaluation aborted.')
     return ds, records

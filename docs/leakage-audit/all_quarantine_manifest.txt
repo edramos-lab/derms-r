@@ -1,0 +1,5 @@
+Removed from datasets/all/test on 2026-11-18: each is within 16 bits (phash, hash_size=16) of a development image.
+[Malignant] Pre-B/Snap_048 - Copy.jpg        <-> development/[Malignant] Pre-B/Snap_049 - Copy.jpg             (10 bits)
+[Malignant] early Pre-B/Snap_089.jpg         <-> development/[Malignant] early Pre-B/Snap_090 - Copy.jpg      (12 bits)
+[Malignant] early Pre-B/Snap_167 - Copy.jpg  <-> development/[Malignant] early Pre-B/Snap_168 - Copy.jpg      (10 bits)
+Restore by moving each file back into datasets/all/test/<class>/. Originals also remain in raw-datasets/Blood.

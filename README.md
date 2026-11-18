@@ -1328,6 +1328,17 @@ python prepare_dataset.py --raw_dir "/path/to/Blood cell Cancer [ALL]" \
 
 `analyze.py` writes ablations (Performance+Complexity, +Data, +Stability) and sensitivity variants. Only the four-component equation is canonical DERMS-R.
 
+### Data-leakage controls and audit
+
+The full methodology, audit findings and remediation for `all` are in
+[`docs/data-leakage-methodology.md`](docs/data-leakage-methodology.md). In short: images are split as
+units (exact duplicates, filename groups and, with `--near-dup-threshold 16`, perceptual-hash
+near-duplicates), development/test overlap aborts the run, and `audit_leakage.py` reports exact and
+near-duplicate pairs for any development/test ImageFolder dataset. For `all`, three test images that were
+near-duplicates of development images were quarantined (test set 325 to 322) and the split was rebuilt
+(1,801 units, no near-duplicate or filename-group overlap between any training and validation fold).
+Patient identifiers are unavailable for `all`, so its results are image-level, not patient-level, evidence.
+
 ## Export ONNX (GPU) and TensorRT
 
 Install export extras, then convert a locked checkpoint. TensorRT engines are GPU-specific and should be built on the target device.

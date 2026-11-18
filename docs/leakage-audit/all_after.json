@@ -1,0 +1,89 @@
+{
+  "images": {
+    "development": 2877,
+    "test": 322
+  },
+  "classes": [
+    "Benign",
+    "[Malignant] Pre-B",
+    "[Malignant] Pro-B",
+    "[Malignant] early Pre-B"
+  ],
+  "exact_duplicate_clusters": 0,
+  "exact_cross_split": 0,
+  "filename_groups": {
+    "development": 1829,
+    "test": 238,
+    "largest_development_group": 153,
+    "shared_development_test": 0
+  },
+  "thresholds": {
+    "6": {
+      "near_pairs": 25,
+      "same_group": 3,
+      "different_group_same_split": 22,
+      "cross_split": 0,
+      "units": 2046,
+      "largest_unit": 153,
+      "cross_split_units": 0,
+      "label_conflict_units": 0,
+      "cross_split_pairs": []
+    },
+    "12": {
+      "near_pairs": 31,
+      "same_group": 4,
+      "different_group_same_split": 27,
+      "cross_split": 0,
+      "units": 2041,
+      "largest_unit": 153,
+      "cross_split_units": 0,
+      "label_conflict_units": 0,
+      "cross_split_pairs": []
+    },
+    "16": {
+      "near_pairs": 37,
+      "same_group": 5,
+      "different_group_same_split": 32,
+      "cross_split": 0,
+      "units": 2036,
+      "largest_unit": 153,
+      "cross_split_units": 0,
+      "label_conflict_units": 0,
+      "cross_split_pairs": []
+    },
+    "20": {
+      "near_pairs": 41,
+      "same_group": 5,
+      "different_group_same_split": 35,
+      "cross_split": 1,
+      "units": 2032,
+      "largest_unit": 153,
+      "cross_split_units": 1,
+      "label_conflict_units": 0,
+      "cross_split_pairs": [
+        {
+          "a": "development/[Malignant] Pre-B/Snap_490.jpg",
+          "b": "test/[Malignant] Pre-B/Snap_489.jpg",
+          "bits": 18
+        }
+      ]
+    },
+    "24": {
+      "near_pairs": 46,
+      "same_group": 7,
+      "different_group_same_split": 38,
+      "cross_split": 1,
+      "units": 2029,
+      "largest_unit": 153,
+      "cross_split_units": 1,
+      "label_conflict_units": 0,
+      "cross_split_pairs": [
+        {
+          "a": "development/[Malignant] Pre-B/Snap_490.jpg",
+          "b": "test/[Malignant] Pre-B/Snap_489.jpg",
+          "bits": 18
+        }
+      ]
+    }
+  }
+}

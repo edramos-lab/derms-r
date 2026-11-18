@@ -12,7 +12,7 @@ Two data sources feed this, kept separate for speed:
   - "full" listing: every image's class label, no pixel decoding. Cheap even
     for tens of thousands of images. Backs the class-balance metrics and the
     cross-validation fold visualization (both only need counts/order).
-  - "sample" listing: up to PER_CLASS_SAMPLE images per class, pixels decoded.
+  - "sample" listing: every image for class-folder datasets (thumbnails), up to PER_CLASS_SAMPLE per class for CIFAR.
     Backs the RGB histogram, sample grid, and PCA/t-SNE.
 """
 import base64
@@ -38,7 +38,9 @@ matplotlib.rcParams["savefig.dpi"] = PLOT_DPI
 
 IMAGE_SUFFIXES = {".jpg", ".jpeg", ".png", ".bmp", ".webp", ".tif", ".tiff"}
 PER_CLASS_SAMPLE = 40
-MAX_TOTAL_SAMPLE = 600
+MAX_TOTAL_SAMPLE = 600  # CIFAR only; class-folder datasets use every image up to MAX_FOLDER_SAMPLE
+MAX_FOLDER_SAMPLE = 5000
+THUMB_SIDE = 128
 THUMB = 24
 MAX_SIZE_SCAN = 1000  # cap on real width/height/file-size scanning for class-folder datasets
 
@@ -166,22 +168,25 @@ def _sample_cifar10(path: Path, class_names):
 
 
 def _sample_class_folders(path: Path, class_names):
+    """Every image of a class-folder dataset (evenly thinned past MAX_FOLDER_SAMPLE), decoded as a
+    downscaled thumbnail: the plots only need per-image mean colour and a small preview."""
+    entries = [(idx, entry)
+               for idx, (_, dirs) in enumerate(_class_dirs(path))
+               for entry in (e for d in dirs for e in sorted(d.iterdir()))
+               if entry.suffix.lower() in IMAGE_SUFFIXES]
+    if len(entries) > MAX_FOLDER_SAMPLE:
+        entries = entries[::-(-len(entries) // MAX_FOLDER_SAMPLE)]
     images, labels, paths = [], [], []
-    for idx, (_, dirs) in enumerate(_class_dirs(path)):
-        found = 0
-        for entry in (e for d in dirs for e in sorted(d.iterdir())):
-            if entry.suffix.lower() not in IMAGE_SUFFIXES:
-                continue
-            try:
-                with Image.open(entry) as im:
-                    images.append(np.array(im.convert("RGB")))
-                labels.append(idx)
-                paths.append(entry)
-                found += 1
-            except (OSError, ValueError):
-                continue
-            if found >= PER_CLASS_SAMPLE:
-                break
+    for idx, entry in entries:
+        try:
+            with Image.open(entry) as im:
+                im = im.convert("RGB")
+                im.thumbnail((THUMB_SIDE, THUMB_SIDE))
+                images.append(np.array(im))
+            labels.append(idx)
+            paths.append(entry)
+        except (OSError, ValueError):
+            continue
     return images, labels, paths
 
 
@@ -518,7 +523,7 @@ def dataset_insights(root: Path, name: str, cv_k: int = 5, cv_strategy: str = "k
         size_stats = _image_size_stats(paths, None)
     metrics.update(size_stats)
 
-    if len(images) > MAX_TOTAL_SAMPLE:
+    if (path / "cifar-10-batches-py").exists() and len(images) > MAX_TOTAL_SAMPLE:
         images, labels = images[:MAX_TOTAL_SAMPLE], labels[:MAX_TOTAL_SAMPLE]
 
     def cname(i):

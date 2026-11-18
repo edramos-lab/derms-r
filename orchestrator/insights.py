@@ -17,6 +17,7 @@ Two data sources feed this, kept separate for speed:
 """
 import base64
 import io
+import os
 import pickle
 import re
 from collections import Counter
@@ -76,14 +77,22 @@ def _full_cifar10(path: Path):
     }
 
 
+def _base_id(filename):
+    """Strip ' (N)' and ' - Copy' suffixes; kept in step with prepare_dataset.base_id, which the
+    orchestrator image does not ship (importing it silently degraded grouping to one group per file)."""
+    name = os.path.splitext(filename)[0]
+    prev = None
+    while prev != name:
+        prev = name
+        name = re.sub(r"\s\(\d+\)$", "", name)
+        name = re.sub(r"\s-\s*copy(\s\(\d+\))?$", "", name, flags=re.IGNORECASE)
+    return name
+
+
 def _group_id(filename):
     """Patient/sample group from a filename, mirroring derms.datasets.inferred_groups."""
     stem = re.sub(r"\.rf\.[0-9a-f]+(?=\.[^.]+$)", "", filename)
-    try:
-        from prepare_dataset import base_id
-        return base_id(stem)
-    except ImportError:
-        return stem
+    return _base_id(stem)
 
 
 SPLIT_DIRS = {"development", "train", "training", "test", "testing", "validation", "val"}

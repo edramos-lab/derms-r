@@ -1027,3 +1027,11 @@ class EdaSplitLayoutTests(unittest.TestCase):
         from derms.config import CV_STRATEGIES, REGISTRY
         self.assertIn("inception_v4", REGISTRY)
         self.assertIn("GroupKFold", CV_STRATEGIES)
+
+
+class EdaGroupIdTests(unittest.TestCase):
+    def test_group_id_matches_training_grouping(self):
+        from orchestrator.insights import _group_id
+        self.assertEqual(_group_id("Sap_013 (12).jpg"), "Sap_013")
+        self.assertEqual(_group_id("Snap_090 - Copy (2).jpg"), "Snap_090")
+        self.assertEqual(_group_id("a_jpg.rf.8b5748c8a2e681c79f8afcf38835ed04.jpg"), "a_jpg")

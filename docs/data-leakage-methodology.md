@@ -48,6 +48,7 @@ image that shares a patient.
 | F8 | CV scores are optimistic: each fold keeps the epoch with the lowest validation loss and reports that fold's metrics at that epoch | `engine.fit`, selection on `val_ids` | **Open**; the held-out test is unaffected because the locked refit uses a fixed budget |
 | F9 | A sweep tests every configuration on the test set; choosing a final configuration by test score is test-set selection | `benchmark()` locks and tests every architecture automatically | Process rule: select by CV, report test only |
 | F10 | Exact decoded-image duplicates: none | 0 clusters in `all`, development and test | No action |
+| F11 | Capture number is not a usable proxy for patient identity in `all`. The collection has 89 patients (about 36 images each), but no patient mapping is on disk | Colour-histogram distance between same-class images at capture-number gap 1-8 is 0.95-1.05 of the distance between random same-class pairs, with no rise-and-plateau at any gap up to 120 (`audit_sequence_gap.py`, `docs/leakage-audit/all_sequence_gap.*`); the run-boundary count ranges from 10 to 304 depending on the threshold, against 89 expected | Not usable for grouping; the real mapping must come from the dataset's authors |
 
 ## 4. Remediation applied to `all`
 
@@ -77,7 +78,7 @@ chain unrelated images together. 16 was chosen because it sits on that plateau a
 
 ## 5. Residual risks and limits
 
-- **No patient identifiers.** Grouping by filename and similarity controls near-identical images,
+- **No patient identifiers, and no reliable proxy for them (F11).** The image-similarity-versus-capture-number analysis found no patient-sized blocks, so the filename-and-similarity units are the best available control and are much finer (1,801 units) than 89 patients. Grouping by filename and similarity controls near-identical images,
   not patients. Images of one patient that look different (other fields, other focus) can still sit
   in different folds or in development and test. Report cross-validation and test results for `all`
   as *image-level* generalization; patient- or slide-level generalization is not established. If
@@ -99,6 +100,9 @@ chain unrelated images together. 16 was chosen because it sits on that plateau a
 ```bash
 # audit a development/test dataset (read-only)
 python audit_leakage.py --root datasets/all --thresholds 6 12 16 20 24 --json audit.json
+
+# does image similarity change with the distance in capture number? (F11)
+python audit_sequence_gap.py --root datasets/all --out audit_sequence_gap
 
 # rebuild the split with the leakage controls on
 python train.py --data datasets --output results/all-run --datasets all --models resnet50 \

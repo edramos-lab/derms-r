@@ -84,27 +84,49 @@ def _group_id(filename):
         return stem
 
 
+SPLIT_DIRS = {"development", "train", "training", "test", "testing", "validation", "val"}
+
+
+def _class_dirs(path: Path):
+    """(class_name, [directories holding that class's images]) for a class-folder dataset.
+
+    Handles both <root>/<class>/ and the split layout <root>/<development|train|test>/<class>/,
+    where every split's folder for a class is merged so EDA covers the whole dataset."""
+    top = sorted(p for p in path.iterdir() if p.is_dir() and not p.name.startswith("."))
+    splits = [p for p in top if p.name.lower() in SPLIT_DIRS]
+    if not splits:
+        return [(p.name, [p]) for p in top]
+    merged = {}
+    for split in splits:
+        for class_dir in sorted(p for p in split.iterdir() if p.is_dir() and not p.name.startswith(".")):
+            merged.setdefault(class_dir.name, []).append(class_dir)
+    return sorted(merged.items())
+
+
 def _full_class_folders(path: Path):
-    classes = sorted(p for p in path.iterdir() if p.is_dir() and not p.name.startswith("."))
-    class_names = [c.name for c in classes]
+    classes = _class_dirs(path)
+    class_names = [name for name, _ in classes]
     ordered_labels = []
     ordered_groups = []
     train_count = test_count = validation_count = other_count = 0
-    for idx, class_dir in enumerate(classes):
-        for entry in sorted(class_dir.iterdir()):
-            if entry.suffix.lower() not in IMAGE_SUFFIXES:
-                continue
-            ordered_labels.append(idx)
-            ordered_groups.append(f"{class_dir.name}/{_group_id(entry.name)}")
-            lower = str(entry).lower()
-            if "/train/" in lower:
-                train_count += 1
-            elif "/test/" in lower:
-                test_count += 1
-            elif "/validation/" in lower or "/val/" in lower:
-                validation_count += 1
-            else:
-                other_count += 1
+    entries = [(idx, class_name, class_dir, entry)
+               for idx, (class_name, dirs) in enumerate(classes)
+               for class_dir in dirs
+               for entry in sorted(class_dir.iterdir())]
+    for idx, class_name, class_dir, entry in entries:
+        if entry.suffix.lower() not in IMAGE_SUFFIXES:
+            continue
+        ordered_labels.append(idx)
+        ordered_groups.append(f"{class_name}/{_group_id(entry.name)}")
+        split = class_dir.parent.name.lower() if class_dir.parent != path else ""
+        if split in ("train", "training", "development"):
+            train_count += 1
+        elif split in ("test", "testing"):
+            test_count += 1
+        elif split in ("validation", "val"):
+            validation_count += 1
+        else:
+            other_count += 1
     if not ordered_labels:
         return None
     return {
@@ -144,11 +166,10 @@ def _sample_cifar10(path: Path, class_names):
 
 
 def _sample_class_folders(path: Path, class_names):
-    classes = sorted(p for p in path.iterdir() if p.is_dir() and not p.name.startswith("."))
     images, labels, paths = [], [], []
-    for idx, class_dir in enumerate(classes):
+    for idx, (_, dirs) in enumerate(_class_dirs(path)):
         found = 0
-        for entry in sorted(class_dir.iterdir()):
+        for entry in (e for d in dirs for e in sorted(d.iterdir())):
             if entry.suffix.lower() not in IMAGE_SUFFIXES:
                 continue
             try:
@@ -381,18 +402,21 @@ def _plot_crossval(ordered_labels, class_names, k, strategy, ordered_groups=None
     k = max(2, min(k, n))
     folds = [Counter() for _ in range(k)]
     grouped = False
-    if strategy == "stratified_group" and ordered_groups is not None:
-        from sklearn.model_selection import StratifiedGroupKFold
+    if strategy in ("stratified_group", "group") and ordered_groups is not None:
+        from sklearn.model_selection import GroupKFold, StratifiedGroupKFold
         try:
-            splits = StratifiedGroupKFold(k, shuffle=True, random_state=42).split(
-                np.zeros(n), ordered_labels, groups=ordered_groups)
+            if strategy == "group":
+                splits = GroupKFold(k).split(np.zeros(n), ordered_labels, groups=ordered_groups)
+            else:
+                splits = StratifiedGroupKFold(k, shuffle=True, random_state=42).split(
+                    np.zeros(n), ordered_labels, groups=ordered_groups)
             for f, (_, val) in enumerate(splits):
                 for i in val:
                     folds[f][ordered_labels[i]] += 1
             grouped = True
         except ValueError:
-            pass  # too few groups per class for k folds
-    if strategy == "stratified_group" and not grouped:
+            pass  # too few groups for k folds
+    if strategy in ("stratified_group", "group") and not grouped:
         strategy = "stratified"  # no usable group information; fall back
     if grouped:
         pass

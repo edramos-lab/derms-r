@@ -1228,7 +1228,7 @@ python verify_benchmark.py
 python smoke_test.py
 ```
 
-The registry pins explicit ImageNet-1k checkpoint tags in `timm==1.0.29`. Aliases are: `resnet50`, `efficientnet_b0`, `efficientnetv2_s`, `convnextv2_tiny`, `xception41`, `vit_base`, `deit3_base`, `swin_tiny`, `maxvit_tiny`, `nextvit_base`, `efficientvit_b0`, `mobilenetv4`. Missing IDs, unavailable weights, deterministic-operation failures, and training errors stop the run; models are never substituted.
+The registry pins explicit ImageNet-1k checkpoint tags in `timm==1.0.29`. Aliases are: `resnet50`, `efficientnet_b0`, `efficientnetv2_s`, `convnextv2_tiny`, `xception41`, `inception_v4`, `vit_base`, `deit3_base`, `swin_tiny`, `maxvit_tiny`, `nextvit_base`, `efficientvit_b0`, `mobilenetv4`. Missing IDs, unavailable weights, deterministic-operation failures, and training errors stop the run; models are never substituted.
 
 ## Run, resume, evaluate
 
@@ -1310,7 +1310,7 @@ python train.py --data ./datasets --output ./results/cifar10 --datasets cifar10 
 ## ALL data, splits, and training protocol
 
 - CIFAR-10/100: official train is development; official test is held out. Flowers-102: official train + val is development. Food-101: official train/test. No official partitions are recombined with test data.
-- Five fixed shuffled **StratifiedKFold** folds (`n_splits=5`, `shuffle=True`, `random_state=42`), matching the E2E-ImageClassification protocol. Stratification is applied to independent units after grouping exact duplicates and patient/sample identities, so groups never cross folds. Nested subsets at 0.10/0.25/0.50/0.75/1.00. Counts use `max(1, floor(r * class_unit_count))`.
+- Five fixed shuffled **StratifiedKFold** folds (`n_splits=5`, `shuffle=True`, `random_state=42`), matching the E2E-ImageClassification protocol (the orchestrator's CV Strategy option can instead select `StratifiedGroupKFold` or `GroupKFold`; `GroupKFold` keeps units intact but does not stratify by class). Stratification is applied to independent units after grouping exact duplicates and patient/sample identities, so groups never cross folds. Nested subsets at 0.10/0.25/0.50/0.75/1.00. Counts use `max(1, floor(r * class_unit_count))`.
 - Images: RGB, bilinear resize to 224×224, then the E2E training augmentations (horizontal flip p=0.5, rotation ±20° p=1.0, HSV stain shift p=0.8, LAB a*/b* shift p=0.8, brightness/contrast p=0.8, Gauss noise p=0.15, blur p=0.15). Validation/test omit those transforms. ImageNet mean/std is applied after augmentation so pretrained timm weights remain valid.
 - Full fine-tuning in FP32, AdamW (`lr=1e-4`, weight decay 0.01), cosine decay, 50 epochs. Minimum validation loss selects each fold checkpoint.
 - Fold metrics: accuracy, macro precision/recall/F1, MCC, ROC-AUC (macro one-vs-rest), and sample-weighted cross-entropy. Each fold writes `val_confusion_matrix.png` and `val_roc_curve.png`. Locked test evaluation writes the same reports as `test_*.png` / `test_classification_report.json`. These conventional reports complement DERMS-R; they do not replace it.

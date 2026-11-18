@@ -53,6 +53,7 @@ MODEL_LABELS = {
     "efficientnetv2_s": "EfficientNetV2-S",
     "convnextv2_tiny": "ConvNeXtV2-Tiny",
     "xception41": "Xception41",
+    "inception_v4": "Inception-v4",
     "vit_base": "ViT-Base",
     "deit3_base": "DeiT3-Base",
     "swin_tiny": "Swin-Tiny",

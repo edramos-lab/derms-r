@@ -199,7 +199,7 @@ class App:
                         else:
                             cv_k = int((query.get("cv_k") or ["5"])[0])
                             cv_strategy = (query.get("cv_strategy") or ["kfold"])[0]
-                            if cv_strategy not in {"kfold", "stratified", "stratified_group"}:
+                            if cv_strategy not in {"kfold", "stratified", "stratified_group", "group"}:
                                 cv_strategy = "kfold"
                             self._send_json(app.eda_insights(dataset_id, cv_k=cv_k, cv_strategy=cv_strategy))
                     elif path == "/api/eda/explain":

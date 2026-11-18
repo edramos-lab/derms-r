@@ -468,7 +468,7 @@
           </div>
           <div class="fixedgrid" style="margin-top:16px">
             <div class="field"><label class="k">K-Folds</label><input type="number" value="5" readonly></div>
-            <div class="field"><label class="k">CV Strategy</label><select id="cv-strategy"><option value="StratifiedKFold">Stratified K-Fold</option><option value="StratifiedGroupKFold">Stratified Group K-Fold</option></select></div>
+            <div class="field"><label class="k">CV Strategy</label><select id="cv-strategy"><option value="StratifiedKFold">Stratified K-Fold</option><option value="StratifiedGroupKFold">Stratified Group K-Fold</option><option value="GroupKFold">Group K-Fold</option></select></div>
             <div class="field"><label class="k">Seed</label><input id="seed" type="number" value="42"></div>
             <div class="field"><label class="k">Holdout</label><input id="holdout" type="text" value="0.20"></div>
             <div class="field"><label class="k">Search Strategy</label><input type="text" value="Grid, one container each" readonly></div>
@@ -2126,7 +2126,7 @@
         kInput.style.cssText = "width:60px;background:#12141c;border:1px solid #262a38;border-radius:6px;color:#fff;padding:4px 8px;font-size:12px";
         const strategySelect = document.createElement("select");
         strategySelect.style.cssText = "background:#12141c;border:1px solid #262a38;border-radius:6px;color:#fff;padding:4px 8px;font-size:12px";
-        const CV_LABELS = {kfold: "K-Fold", stratified: "Stratified K-Fold", stratified_group: "Stratified Group K-Fold"};
+        const CV_LABELS = {kfold: "K-Fold", stratified: "Stratified K-Fold", stratified_group: "Stratified Group K-Fold", group: "Group K-Fold"};
         for (const opt of Object.keys(CV_LABELS)) {
           const option = document.createElement("option");
           option.value = opt; option.textContent = CV_LABELS[opt];

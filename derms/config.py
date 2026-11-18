@@ -7,13 +7,14 @@ DELTA = 0.5
 P0 = 1_000_000.0
 SIGMA0 = 0.001
 FOLDS = 5
-CV_STRATEGIES = ('StratifiedKFold', 'StratifiedGroupKFold')
+CV_STRATEGIES = ('StratifiedKFold', 'StratifiedGroupKFold', 'GroupKFold')
 REGISTRY = {
     'resnet50': 'resnet50.a1_in1k',
     'efficientnet_b0': 'efficientnet_b0.ra_in1k',
     'efficientnetv2_s': 'tf_efficientnetv2_s.in1k',
     'convnextv2_tiny': 'convnextv2_tiny.fcmae_ft_in1k',
     'xception41': 'xception41.tf_in1k',
+    'inception_v4': 'inception_v4.tf_in1k',
     'vit_base': 'vit_base_patch16_224.augreg_in1k',
     'deit3_base': 'deit3_base_patch16_224.fb_in1k',
     'swin_tiny': 'swin_tiny_patch4_window7_224.ms_in1k',

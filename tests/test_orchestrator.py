@@ -1003,3 +1003,27 @@ class TestEtaEstimate(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class EdaSplitLayoutTests(unittest.TestCase):
+    def test_development_test_layout_is_scanned_as_classes(self):
+        from PIL import Image
+        from orchestrator.insights import _full_class_folders, _sample_class_folders
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            for split in ("development", "test"):
+                for cls in ("Benign", "Pre-B"):
+                    (root / split / cls).mkdir(parents=True)
+                    for i in range(3):
+                        Image.new("RGB", (8, 8)).save(root / split / cls / f"{cls}{i}_{split}.png")
+            full = _full_class_folders(root)
+            self.assertEqual(full["class_names"], ["Benign", "Pre-B"])
+            self.assertEqual(len(full["ordered_labels"]), 12)
+            self.assertEqual((full["train_count"], full["test_count"]), (6, 6))
+            images, labels, _ = _sample_class_folders(root, full["class_names"])
+            self.assertEqual((len(images), sorted(set(labels))), (12, [0, 1]))
+
+    def test_model_and_cv_options_are_registered(self):
+        from derms.config import CV_STRATEGIES, REGISTRY
+        self.assertIn("inception_v4", REGISTRY)
+        self.assertIn("GroupKFold", CV_STRATEGIES)

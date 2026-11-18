@@ -26,7 +26,7 @@ import numpy as np
 import pandas as pd
 from PIL import Image
 from sklearn.metrics import accuracy_score, precision_recall_fscore_support, matthews_corrcoef
-from sklearn.model_selection import StratifiedGroupKFold, StratifiedKFold, train_test_split
+from sklearn.model_selection import GroupKFold, StratifiedGroupKFold, StratifiedKFold, train_test_split
 import timm
 import torch
 from torch import nn
@@ -171,11 +171,14 @@ def nested(units, uy, eligible, seed):
 def cv_splits(units, uy, seed, strategy):
     if strategy == 'StratifiedKFold':
         return StratifiedKFold(FOLDS, shuffle=True, random_state=seed).split(units, uy)
-    if strategy == 'StratifiedGroupKFold':
+    if strategy in ('StratifiedGroupKFold', 'GroupKFold'):
         # Balance by image count: each unit contributes all its images, units never split across folds.
         sizes = np.asarray([len(u) for u in units])
         rows = np.repeat(np.arange(len(units)), sizes)
-        splitter = StratifiedGroupKFold(FOLDS, shuffle=True, random_state=seed).split(rows, uy[rows], groups=rows)
+        if strategy == 'GroupKFold':  # not stratified: classes may be unevenly spread across folds
+            splitter = GroupKFold(FOLDS).split(rows, uy[rows], groups=rows)
+        else:
+            splitter = StratifiedGroupKFold(FOLDS, shuffle=True, random_state=seed).split(rows, uy[rows], groups=rows)
         return ((np.unique(rows[tr]), np.unique(rows[va])) for tr, va in splitter)
     raise ValueError(f'Unknown cv strategy {strategy!r}; expected one of {CV_STRATEGIES}.')
 

@@ -648,6 +648,10 @@ def parser():
     p.add_argument('--epoch-selection', choices=('best', 'last'), default='best',
                    help="'last' evaluates the final epoch of every fold, so no checkpoint is chosen on validation data "
                         "(recommended); 'best' keeps the lowest-validation-loss epoch and inflates CV scores")
+    p.add_argument('--background-randomization', action='store_true',
+                   help='training-only: composite each image\'s cells over a generated background drawn from many '
+                        'staining protocols and optics, so the glass cannot carry class information; evaluation uses '
+                        'raw images (see derms/background.py)')
     p.add_argument('--pretrained', action=argparse.BooleanOptionalAction, default=True)
     p.add_argument('--augmentation', action=argparse.BooleanOptionalAction, default=True)
     p.add_argument('--flip-probability', type=float, default=0.5)
@@ -712,7 +716,8 @@ def main():
            and k not in ('output', 'download', 'resume', 'verify_models', 'prepare_only', 'lock')
            and not (k == 'cv_strategy' and v == CV_STRATEGIES[0])  # defaults omitted: keep old config hashes valid
            and not (k == 'near_dup_threshold' and not v)
-           and not (k == 'epoch_selection' and v == 'best')}
+           and not (k == 'epoch_selection' and v == 'best')
+           and not (k == 'background_randomization' and not v)}
     cfg.update(schema=SCHEMA, ratios=list(RATIOS), folds=FOLDS, image_size=224,
                normalization={'mean': MEAN, 'std': STD}, precision='float32',
                source_hashes={n: file_hash(project_root() / n) for n in source_files()},

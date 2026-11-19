@@ -1050,6 +1050,15 @@ class EpochSelectionOptionTests(unittest.TestCase):
             parse_runs(fixed_payload(epoch_selection="validation"))
 
 
+class BackgroundRandomizationOptionTests(unittest.TestCase):
+    def test_flag_reaches_the_training_command_only_when_on(self):
+        from orchestrator.launcher import train_args
+        off = train_args(parse_runs(fixed_payload())[0], None)
+        self.assertNotIn("--background-randomization", off)
+        on = train_args(parse_runs(fixed_payload(background_randomization=True))[0], None)
+        self.assertIn("--background-randomization", on)
+
+
 class NearDuplicateOptionTests(unittest.TestCase):
     def test_threshold_reaches_the_training_command_only_when_set(self):
         from orchestrator.launcher import train_args

@@ -1,0 +1,15 @@
+{
+  "epochs": 8,
+  "cv": "StratifiedGroupKFold",
+  "folds": 5,
+  "models": {},
+  "generator_checks": {
+    "composite_glass_only": 0.5107919497448579,
+    "composite_glass_far_from_cells": 0.24141908995114358,
+    "composite_ring_only": 0.39940661698478885,
+    "grey_cells_glass_far_from_cells": 0.24449274311566033,
+    "grey_cells_ring_only": 0.39970679922144614,
+    "raw_glass_only_reference": 0.9341046707957483,
+    "raw_ring_only_reference": 0.94005841984884
+  }
+}

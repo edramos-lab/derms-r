@@ -1349,6 +1349,7 @@ Report `all` as **image-level** evidence only. The supporting findings are F11-F
 - **What image-level evaluation costs:** on C-NMC 2019, which records the patient of every image, image-level CV scored 0.902 balanced accuracy against 0.820 patient-level. Expect `all` to be inflated by at least as much.
 - **External validity is not shown:** a model trained on `all` did not transfer to C-NMC (balanced accuracy 0.50, AUC 0.19), though the two differ in task framing, imaging and centre.
 - **Use `--epoch-selection last`** (the orchestrator default, "Final epoch") so CV scores are not selected on validation data (finding F8). The CLI default `best` keeps the lowest-validation-loss epoch, gives optimistic CV scores and is kept only so older outputs resume. Select configurations by CV and report the held-out test once.
+- **Layout floor and background randomization.** A network that sees only the cell mask scores 0.899, so any morphology claim must beat that floor, not chance. Training with `--background-randomization` (orchestrator checkbox) composites each image's cells over generated backgrounds from many staining protocols, removes the glass as a cue, and is evaluated on raw images; see finding F16 and `audit_background_randomization.py`.
 - **If patient identifiers become available,** pass them with `--all-groups` and re-run. Diagnostics: `audit_background_canary.py`, `audit_background_ablation.py`, `audit_external_cnmc.py`.
 
 ## Export ONNX (GPU) and TensorRT

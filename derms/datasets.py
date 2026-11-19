@@ -36,6 +36,7 @@ from torchvision import datasets as tv
 from .config import *
 from .utils import *
 from .augmentation import training_augmentations
+from . import background
 
 
 def labels(ds):
@@ -321,12 +322,26 @@ class Images(Dataset):
     def __init__(self, base, indices, cfg, augment, seed):
         self.base, self.indices = base, indices
         self.tf = transform(cfg, augment, seed)
+        # Background randomization is a training-only augmentation; evaluation sees raw images. When the
+        # option is on, the caption/scale-bar strip is blanked in both so it can never be a cue.
+        self.strip = bool(cfg.get('background_randomization'))
+        self.randomize = self.strip and augment
+        self.masks = {}
     def __len__(self):
         return len(self.indices)
     def __getitem__(self, i):
         j = self.indices[i]
         image, target = self.base[j]
         arr = np.asarray(image.convert('RGB'))
+        if self.strip:
+            arr = background.fit(arr)
+            if self.randomize:
+                if j not in self.masks:
+                    self.masks[j] = background.cell_mask(arr)
+                # np.random is reseeded per epoch and per worker, so backgrounds differ across both
+                arr = background.randomize(arr, np.random.default_rng(np.random.randint(0, 2**31 - 1)), self.masks[j])
+            else:
+                arr = background.blank_strip(arr)
         return self.tf(image=arr)['image'], int(target)
 
 

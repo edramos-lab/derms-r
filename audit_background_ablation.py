@@ -63,12 +63,30 @@ def foreground_masks(images):
     return F.max_pool2d(masks, 5, 1, 2)
 
 
-def condition(images, masks, mode):
-    x = (images.float() / 255 - MEAN) / STD
-    if mode == 'cells':
-        x = x * masks
-    elif mode == 'background':
-        x = x * (1 - masks)
+def glass_masks(images):
+    """Cell-free glass only: the brightest, least saturated pixels of each image (same rule as the canary)."""
+    x = images.float() / 255
+    peak, low = x.max(1).values, x.min(1).values
+    sat = (peak - low) / peak.clamp(min=1e-6)
+    out = torch.zeros_like(low)
+    for i in range(len(x)):
+        out[i] = ((low[i] > np.percentile(low[i].numpy(), 90)) & (sat[i] < np.percentile(sat[i].numpy(), 20))).float()
+    return out[:, None]
+
+
+def condition(images, masks, glass, mode):
+    """mode = base[_norm]; _norm standardizes each channel per image (removes global tint and contrast)."""
+    base, _, norm = mode.partition('_')
+    x = images.float() / 255
+    region = {'full': torch.ones_like(masks), 'cells': masks, 'background': 1 - masks, 'glass': glass}[base]
+    if norm:
+        count = region.sum((2, 3), keepdim=True).clamp(min=1)
+        mean = (x * region).sum((2, 3), keepdim=True) / count
+        std = (((x - mean) * region) ** 2).sum((2, 3), keepdim=True).div(count).sqrt().clamp(min=1e-3)
+        x = (x - mean) / std
+    else:
+        x = (x - MEAN) / STD
+    x = x * region
     x[:, :, int(SIDE * (1 - BOTTOM)):] = 0  # scale bar / caption strip, in every condition
     return x
 
@@ -121,6 +139,9 @@ def main():
     p.add_argument('--batch', type=int, default=32)
     p.add_argument('--folds', type=int, default=5)
     p.add_argument('--seed', type=int, default=0)
+    p.add_argument('--conditions', nargs='+', default=['full', 'cells', 'background'],
+                   help='full cells background glass, each optionally with _norm (per-image channel standardization)')
+    p.add_argument('--tag', default='background_ablation')
     args = p.parse_args()
 
     split = json.loads(args.split.read_text())
@@ -128,14 +149,14 @@ def main():
     device = 'cuda'
     images = load(args.root, records)
     y = torch.tensor([r['label'] for r in records])
-    masks = foreground_masks(images)
+    masks, glass = foreground_masks(images), glass_masks(images)
     print(f'{len(records)} images, stained-cell fraction {masks.mean():.2f}, folds {split["cv"]}, '
           f'near-dup {split.get("near_dup_threshold", 0)}', flush=True)
 
-    report = {'model': args.model, 'epochs': args.epochs, 'cv': split['cv'], 'cell_fraction': float(masks.mean()),
+    report = {'model': args.model, 'epochs': args.epochs, 'cv': split['cv'], 'cell_fraction': float(masks.mean()), 'glass_fraction': float(glass.mean()),
               'conditions': {}}
-    for mode in ('full', 'cells', 'background'):
-        x = condition(images, masks, mode)
+    for mode in args.conditions:
+        x = condition(images, masks, glass, mode)
         accs, bals = [], []
         for f, fold in enumerate(split['folds'][:args.folds]):
             t = time.time()
@@ -149,7 +170,7 @@ def main():
                                       'std_balanced_accuracy': float(np.std(bals))}
         print(f'{mode:>10} mean balanced accuracy {np.mean(bals):.3f} +/- {np.std(bals):.3f}', flush=True)
         args.out.mkdir(parents=True, exist_ok=True)
-        (args.out / 'background_ablation.json').write_text(json.dumps(report, indent=2))
+        (args.out / f'{args.tag}.json').write_text(json.dumps(report, indent=2))
 
 
 if __name__ == '__main__':

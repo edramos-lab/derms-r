@@ -51,6 +51,7 @@ image that shares a patient.
 | F11 | Capture number is not a usable proxy for patient identity in `all`. The collection has 89 patients (about 36 images each), but no patient mapping is on disk | Colour-histogram distance between same-class images at capture-number gap 1-8 is 0.95-1.05 of the distance between random same-class pairs, with no rise-and-plateau at any gap up to 120 (`audit_sequence_gap.py`, `docs/leakage-audit/all_sequence_gap.*`); the run-boundary count ranges from 10 to 304 depending on the threshold, against 89 expected | Not usable for grouping; the real mapping must come from the dataset's authors |
 | F12 | Acquisition fingerprint: the class is predictable from cell-free background pixels alone, so image-level scores cannot be attributed to cell morphology only | Background-only classifier on the frozen StratifiedGroupKFold folds (threshold 16): 4-class balanced accuracy 0.92 (gradient boosting; chance 0.25, shuffled-label control 0.25), benign vs malignant 0.92; with a tighter background mask 0.82 and 0.82 (`audit_background_canary.py`, `docs/leakage-audit/background_canary*.json`) | Open; limits any universality claim. Mitigate with stain/colour normalization or augmentation and report the canary |
 | F13 | A fine-tuned ResNet-50 reaches nearly the same score with the stained cells removed as with the full image, so a high score does not show it uses morphology | Same folds, fixed 8 epochs, no best-epoch selection, 5 folds, balanced accuracy: full 0.986 +/- 0.007; cells only (background grayed) 0.974 +/- 0.010; background only (stained cells grayed) 0.971 +/- 0.009 (`audit_background_ablation.py`, `docs/leakage-audit/background_ablation.json`) | Open; the two inputs are redundant, so the contribution of each is not isolated |
+| F14 | Removing global tint and contrast does not remove the shortcut: glass-only input scores 0.82 with or without per-image channel standardization, and the full image scores 0.99 after it | Same protocol as F13, balanced accuracy over 5 folds: glass only 0.820 +/- 0.031; glass, per-image standardized 0.827 +/- 0.022; full, standardized 0.990 +/- 0.006; background, standardized 0.963 +/- 0.011 (`docs/leakage-audit/background_ablation_norm.json`) | Open; tint is not the only cue |
 
 ## 4. Remediation applied to `all`
 
@@ -87,6 +88,7 @@ chain unrelated images together. 16 was chosen because it sits on that plateau a
   identifiers become available, pass them with `--all-groups` and re-run.
 - **Acquisition confound (F12).** Background pixels alone predict the class far above chance, so the images carry stain, illumination or slide information that tracks the patient-level label. A residual cell-derived signal in the mask is possible (the tighter mask lowers but does not remove the effect). Do not claim morphology-only or patient-universal performance; the canary is a diagnostic, not a patient-level test.
 - **Redundant cues (F13).** The background-only input is the non-stained region, which still contains pale red cells and cell outlines, so it is not pure glass; the 0.97 therefore shows that non-cell content suffices, not that stain tint alone does. The full model may use either cue. Report CV scores as image-level and do not attribute them to morphology.
+- **Not only tint (F14).** Standardizing each channel per image leaves every score unchanged, so global colour is not what the network needs. The glass mask itself encodes where cells are not, so glass-only input still reveals cell layout and density; with the remaining cues (illumination gradients, noise and compression texture) this design cannot separate acquisition from layout. Colour normalization alone is not a mitigation.
 - **One test pair at 18 bits.** `Snap_489` (test) and `Snap_490` (development), both Pre-B, are 18
   bits apart. They are outside the chosen threshold of 16 and were left in place. A threshold of 20
   would flag and require quarantining this pair.
@@ -113,6 +115,8 @@ python audit_sequence_gap.py --root datasets/all --out audit_sequence_gap
 
 # train the same network on full / cells-only / background-only images (F13)
 python audit_background_ablation.py --root datasets/all --split results/all-run/all/splits.json --out ablation
+python audit_background_ablation.py --root datasets/all --split results/all-run/all/splits.json --out ablation \
+    --conditions glass glass_norm full_norm background_norm --tag background_ablation_norm   # F14
 
 # rebuild the split with the leakage controls on
 python train.py --data datasets --output results/all-run --datasets all --models resnet50 \

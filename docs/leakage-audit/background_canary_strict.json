@@ -1,0 +1,34 @@
+{
+  "images": 2860,
+  "classes": [
+    "Benign",
+    "[Malignant] Pre-B",
+    "[Malignant] Pro-B",
+    "[Malignant] early Pre-B"
+  ],
+  "cv": "StratifiedGroupKFold",
+  "tasks": {
+    "multi-class": {
+      "chance_balanced_accuracy": 0.25,
+      "logistic regression": {
+        "background_only": 0.7205792345198924,
+        "shuffled_labels": 0.19961759857042022
+      },
+      "gradient boosting": {
+        "background_only": 0.8234343715913198,
+        "shuffled_labels": 0.22639245163281335
+      }
+    },
+    "benign vs malignant": {
+      "chance_balanced_accuracy": 0.5,
+      "logistic regression": {
+        "background_only": 0.6646334716459198,
+        "shuffled_labels": 0.5003199631166436
+      },
+      "gradient boosting": {
+        "background_only": 0.8155509451360075,
+        "shuffled_labels": 0.49531304748732136
+      }
+    }
+  }
+}

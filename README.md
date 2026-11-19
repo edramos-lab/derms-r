@@ -1339,6 +1339,18 @@ near-duplicates of development images were quarantined (test set 325 to 322) and
 (1,801 units, no near-duplicate or filename-group overlap between any training and validation fold).
 Patient identifiers are unavailable for `all`, so its results are image-level, not patient-level, evidence.
 
+#### Reporting results on `all`
+
+Report `all` as **image-level** evidence only. The supporting findings are F11-F15 in the methodology document.
+
+- **State the setup:** the grouping rule (filename sequence, exact hash, 256-bit perceptual hash within 16 bits), the number of units (1,801), `StratifiedGroupKFold`, the three quarantined test images, and that patient identifiers were unavailable.
+- **Say what the scores mean:** performance on images from this collection and acquisition setup. Do not claim patient-level generalization, and do not attribute the scores to cell morphology alone.
+- **Why:** class is predictable from the empty background alone (balanced accuracy 0.82-0.92, chance 0.25), and a network trained on stained cells only or on non-cell content only scores about 0.97. Per-image colour normalization does not remove this, so it is not just stain tint.
+- **What image-level evaluation costs:** on C-NMC 2019, which records the patient of every image, image-level CV scored 0.902 balanced accuracy against 0.820 patient-level. Expect `all` to be inflated by at least as much.
+- **External validity is not shown:** a model trained on `all` did not transfer to C-NMC (balanced accuracy 0.50, AUC 0.19), though the two differ in task framing, imaging and centre.
+- **CV scores use best-epoch selection** (finding F8, open) and are optimistic; select configurations by CV and report the held-out test once.
+- **If patient identifiers become available,** pass them with `--all-groups` and re-run. Diagnostics: `audit_background_canary.py`, `audit_background_ablation.py`, `audit_external_cnmc.py`.
+
 ## Export ONNX (GPU) and TensorRT
 
 Install export extras, then convert a locked checkpoint. TensorRT engines are GPU-specific and should be built on the target device.

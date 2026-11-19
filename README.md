@@ -1348,7 +1348,7 @@ Report `all` as **image-level** evidence only. The supporting findings are F11-F
 - **Why:** class is predictable from the empty background alone (balanced accuracy 0.82-0.92, chance 0.25), and a network trained on stained cells only or on non-cell content only scores about 0.97. Per-image colour normalization does not remove this, so it is not just stain tint.
 - **What image-level evaluation costs:** on C-NMC 2019, which records the patient of every image, image-level CV scored 0.902 balanced accuracy against 0.820 patient-level. Expect `all` to be inflated by at least as much.
 - **External validity is not shown:** a model trained on `all` did not transfer to C-NMC (balanced accuracy 0.50, AUC 0.19), though the two differ in task framing, imaging and centre.
-- **CV scores use best-epoch selection** (finding F8, open) and are optimistic; select configurations by CV and report the held-out test once.
+- **Use `--epoch-selection last`** (the orchestrator default, "Final epoch") so CV scores are not selected on validation data (finding F8). The CLI default `best` keeps the lowest-validation-loss epoch, gives optimistic CV scores and is kept only so older outputs resume. Select configurations by CV and report the held-out test once.
 - **If patient identifiers become available,** pass them with `--all-groups` and re-run. Diagnostics: `audit_background_canary.py`, `audit_background_ablation.py`, `audit_external_cnmc.py`.
 
 ## Export ONNX (GPU) and TensorRT

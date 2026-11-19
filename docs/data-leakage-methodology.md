@@ -45,7 +45,7 @@ image that shares a patient.
 | F5 | Training did not cluster near-duplicates at all | `make_units` unioned only SHA-256 and filename groups | Fixed: `--near-dup-threshold` |
 | F6 | Orchestrator EDA grouped by file instead of patient/sample: the image lacked `prepare_dataset`, and the import failed silently | EDA reported one group per file (2,877) while training saw 1,829 | Fixed: `base_id` inlined in `orchestrator/insights.py`, covered by a test |
 | F7 | Filename typos defeat filename grouping (`Snap_0s10`, `Snasp_009`, `Snap_#`, `Sap_#`, `Snp_#`) | The two examples are 1 bit apart | Mitigated by near-duplicate units |
-| F8 | CV scores are optimistic: each fold keeps the epoch with the lowest validation loss and reports that fold's metrics at that epoch | `engine.fit`, selection on `val_ids` | **Open**; the held-out test is unaffected because the locked refit uses a fixed budget |
+| F8 | CV scores are optimistic: each fold keeps the epoch with the lowest validation loss and reports that fold's metrics at that epoch | `engine.fit`, selection on `val_ids` | **Fixed by option**: `--epoch-selection last` scores every fold at its final epoch, so nothing is chosen on validation data. The default stays `best` so existing outputs keep their config hash and resume; use `last` for new runs (the orchestrator defaults to it). The held-out test was never affected because the locked refit uses a fixed budget |
 | F9 | A sweep tests every configuration on the test set; choosing a final configuration by test score is test-set selection | `benchmark()` locks and tests every architecture automatically | Process rule: select by CV, report test only |
 | F10 | Exact decoded-image duplicates: none | 0 clusters in `all`, development and test | No action |
 | F11 | Capture number is not a usable proxy for patient identity in `all`. The collection has 89 patients (about 36 images each), but no patient mapping is on disk | Colour-histogram distance between same-class images at capture-number gap 1-8 is 0.95-1.05 of the distance between random same-class pairs, with no rise-and-plateau at any gap up to 120 (`audit_sequence_gap.py`, `docs/leakage-audit/all_sequence_gap.*`); the run-boundary count ranges from 10 to 304 depending on the threshold, against 89 expected | Not usable for grouping; the real mapping must come from the dataset's authors |
@@ -97,7 +97,7 @@ chain unrelated images together. 16 was chosen because it sits on that plateau a
 - **Uneven folds.** Because a 153-image group cannot be split, fold sizes range from 463 to 702
   validation images and the per-class counts are uneven (for example early Pre-B: 302, 298, 87, 87,
   107). Per-fold metrics should be read with that in mind.
-- **Selection bias (F8)** inflates CV scores until fixed; test results are not affected.
+- **Selection bias (F8)** inflates CV scores in any run made with `--epoch-selection best` (the CLI default, for compatibility); runs with `last` are free of it. Do not compare the two policies' CV scores directly; test results are not affected.
 - **Other datasets.** Footprint-Type relies on Roboflow `.rf.` filename grouping and an in-code
   group-aware holdout; it was not audited for near-duplicates. BloodMNIST was not available to
   audit. CIFAR and Flowers/Food101 inherit ImageNet-pretraining overlap that this code cannot
@@ -134,4 +134,4 @@ In the orchestrator, set CV Strategy to Stratified Group K-Fold and Near-Duplica
 
 State the grouping rule (filename sequence, exact hash, 256-bit perceptual hash within 16 bits),
 the number of units, the CV strategy, that patient identifiers were unavailable, the three
-quarantined test images, and that CV scores use best-epoch selection (until F8 is addressed).
+quarantined test images, and the epoch-selection policy (`--epoch-selection last` is selection-free; CV scores from `best` are optimistic).

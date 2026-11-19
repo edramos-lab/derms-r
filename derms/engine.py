@@ -148,7 +148,8 @@ def fit(ds, train_ids, val_ids, cfg, name, nclasses, directory, identity, seed, 
         if val_ids is not None:
             result, _, _, _ = evaluate(model, loader(ds, val_ids, cfg, False, seed), cfg['device'], nclasses)
             row.update({f'val_{k}': v for k, v in result.items() if not isinstance(v, (list, dict))})
-            if result['loss'] < best_loss:  # earliest epoch wins exact ties
+            # 'last' keeps the final epoch, so nothing is chosen on the validation fold (F8); 'best' is legacy.
+            if cfg.get('epoch_selection') == 'last' or result['loss'] < best_loss:  # earliest epoch wins exact ties
                 best_loss, best_epoch = result['loss'], epoch + 1
                 best_state, best_metrics = cpu_state(model), result
         else:
@@ -644,6 +645,9 @@ def parser():
     p.add_argument('--near-dup-threshold', type=int, default=0,
                    help='group images within this many bits of a 256-bit perceptual hash into one CV unit and '
                         'refuse a test set containing such images; 0 disables (recommended for ALL: 16)')
+    p.add_argument('--epoch-selection', choices=('best', 'last'), default='best',
+                   help="'last' evaluates the final epoch of every fold, so no checkpoint is chosen on validation data "
+                        "(recommended); 'best' keeps the lowest-validation-loss epoch and inflates CV scores")
     p.add_argument('--pretrained', action=argparse.BooleanOptionalAction, default=True)
     p.add_argument('--augmentation', action=argparse.BooleanOptionalAction, default=True)
     p.add_argument('--flip-probability', type=float, default=0.5)
@@ -707,7 +711,8 @@ def main():
            if not k.startswith(('wandb', 'mlflow'))
            and k not in ('output', 'download', 'resume', 'verify_models', 'prepare_only', 'lock')
            and not (k == 'cv_strategy' and v == CV_STRATEGIES[0])  # defaults omitted: keep old config hashes valid
-           and not (k == 'near_dup_threshold' and not v)}
+           and not (k == 'near_dup_threshold' and not v)
+           and not (k == 'epoch_selection' and v == 'best')}
     cfg.update(schema=SCHEMA, ratios=list(RATIOS), folds=FOLDS, image_size=224,
                normalization={'mean': MEAN, 'std': STD}, precision='float32',
                source_hashes={n: file_hash(project_root() / n) for n in source_files()},

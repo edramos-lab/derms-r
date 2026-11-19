@@ -172,6 +172,7 @@ class RunSpec:
     window: bool = False
     cv_strategy: str = "StratifiedKFold"
     near_dup_threshold: int = 0
+    epoch_selection: str = "best"
 
 
 def fmt_float(value):
@@ -332,6 +333,9 @@ def _shared(payload, datasets, models):
     near_dup_threshold = int(_as_number(payload.get("near_dup_threshold") or 0, "near_dup_threshold"))
     if not 0 <= near_dup_threshold <= 64:
         raise ConfigError("Near-duplicate threshold must be between 0 (off) and 64 bits.")
+    epoch_selection = str(payload.get("epoch_selection") or "best")
+    if epoch_selection not in ("best", "last"):
+        raise ConfigError("Epoch selection must be 'best' or 'last'.")
     experiment = str(payload.get("mlflow_experiment") or "derms-r-benchmark").strip()
     if not experiment:
         raise ConfigError("MLflow experiment name cannot be empty.")
@@ -350,6 +354,7 @@ def _shared(payload, datasets, models):
         "holdout": holdout,
         "cv_strategy": cv_strategy,
         "near_dup_threshold": near_dup_threshold,
+        "epoch_selection": epoch_selection,
         "augmentation": bool(payload.get("augmentation", True)),
         "pretrained": bool(payload.get("pretrained", True)),
         "experiment": experiment,
@@ -439,6 +444,8 @@ def train_args(run: RunSpec, tracking_uri: str | None, resume: bool = False):
     ]
     if run.near_dup_threshold:
         args += ["--near-dup-threshold", str(run.near_dup_threshold)]
+    if run.epoch_selection != "best":
+        args += ["--epoch-selection", run.epoch_selection]
     if not run.augmentation:
         args.append("--no-augmentation")
     if not run.pretrained:
@@ -522,6 +529,8 @@ def lock_args(job: dict, dataset: str, tracking_uri: str | None):
     ]
     if job.get("near_dup_threshold"):
         args += ["--near-dup-threshold", str(job["near_dup_threshold"])]
+    if job.get("epoch_selection", "best") != "best":
+        args += ["--epoch-selection", job["epoch_selection"]]
     if not job.get("augmentation", True):
         args.append("--no-augmentation")
     if not job.get("pretrained", True):

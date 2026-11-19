@@ -1037,6 +1037,19 @@ class EdaGroupIdTests(unittest.TestCase):
         self.assertEqual(_group_id("a_jpg.rf.8b5748c8a2e681c79f8afcf38835ed04.jpg"), "a_jpg")
 
 
+class EpochSelectionOptionTests(unittest.TestCase):
+    def test_final_epoch_reaches_the_training_command_only_when_chosen(self):
+        from orchestrator.launcher import train_args
+        legacy = train_args(parse_runs(fixed_payload())[0], None)
+        self.assertNotIn("--epoch-selection", legacy)
+        last = train_args(parse_runs(fixed_payload(epoch_selection="last"))[0], None)
+        self.assertEqual(last[last.index("--epoch-selection") + 1], "last")
+
+    def test_unknown_policy_is_rejected(self):
+        with self.assertRaises(ConfigError):
+            parse_runs(fixed_payload(epoch_selection="validation"))
+
+
 class NearDuplicateOptionTests(unittest.TestCase):
     def test_threshold_reaches_the_training_command_only_when_set(self):
         from orchestrator.launcher import train_args

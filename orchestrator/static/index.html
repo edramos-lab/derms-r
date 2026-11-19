@@ -470,6 +470,7 @@
             <div class="field"><label class="k">K-Folds</label><input type="number" value="5" readonly></div>
             <div class="field"><label class="k">CV Strategy</label><select id="cv-strategy"><option value="StratifiedKFold">Stratified K-Fold</option><option value="StratifiedGroupKFold">Stratified Group K-Fold</option><option value="GroupKFold">Group K-Fold</option></select></div>
             <div class="field"><label class="k">Near-Duplicate Threshold (bits)</label><input id="near-dup" type="number" min="0" max="64" value="0" title="0 = off. Images within this Hamming distance of a 256-bit perceptual hash are kept in one CV unit, and a test set containing such images is refused. Recommended for ALL: 16."></div>
+            <div class="field"><label class="k">Epoch Selection</label><select id="epoch-selection" title="Final epoch: every fold is scored at its last epoch, so nothing is chosen on validation data (recommended). Best validation loss: legacy; keeps the best epoch per fold and inflates CV scores."><option value="last">Final epoch (recommended)</option><option value="best">Best validation loss (legacy)</option></select></div>
             <div class="field"><label class="k">Seed</label><input id="seed" type="number" value="42"></div>
             <div class="field"><label class="k">Holdout</label><input id="holdout" type="text" value="0.20"></div>
             <div class="field"><label class="k">Search Strategy</label><input type="text" value="Grid, one container each" readonly></div>
@@ -684,6 +685,7 @@
         holdout: Number(document.getElementById("holdout").value),
         cv_strategy: document.getElementById("cv-strategy").value,
         near_dup_threshold: Number(document.getElementById("near-dup").value) || 0,
+        epoch_selection: document.getElementById("epoch-selection").value,
         folds: 5,
         ratios: [0.10, 0.25, 0.50, 0.75, 1.00],
         augmentation: document.getElementById("augmentation").checked,
@@ -2269,6 +2271,7 @@
       document.getElementById("holdout").value = "0.20";
       document.getElementById("cv-strategy").value = "StratifiedKFold";
       document.getElementById("near-dup").value = "0";
+      document.getElementById("epoch-selection").value = "last";
       document.getElementById("experiment").value = "derms-r-benchmark";
       document.getElementById("deployment").value = "single";
       document.getElementById("augmentation").checked = true;
@@ -2392,6 +2395,7 @@
       setValue("holdout", saved.holdout);
       if (saved.cv_strategy) setValue("cv-strategy", saved.cv_strategy);
       if (saved.near_dup_threshold != null) setValue("near-dup", saved.near_dup_threshold);
+      if (saved.epoch_selection) setValue("epoch-selection", saved.epoch_selection);
       setChecked("augmentation", saved.augmentation);
       setChecked("pretrained", saved.pretrained);
       if (saved.mlflow_experiment) setValue("experiment", saved.mlflow_experiment);

@@ -1049,6 +1049,7 @@ class App:
                 "holdout": run.holdout,
                 "cv_strategy": run.cv_strategy,
                 "near_dup_threshold": run.near_dup_threshold,
+                "epoch_selection": run.epoch_selection,
                 "augmentation": run.augmentation,
                 "pretrained": run.pretrained,
                 "mlflow_experiment": run.experiment,

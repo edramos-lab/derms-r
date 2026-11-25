@@ -531,6 +531,7 @@
             </div>
             <div class="inline">
               <label class="checkline"><input id="augmentation" type="checkbox" checked> Augmentation</label>
+              <label class="checkline" title="Policy used when Augmentation is on. Default: stain/illumination policy (flip, rotation, HSV and LAB colour shifts, brightness/contrast, noise, blur). MRI: for greyscale scans, flip, rotation, scale and translation, brightness/contrast, gamma, noise, blur, with no hue, saturation or LAB shifts.">Preset <select id="augmentation-preset"><option value="default">Default (stain)</option><option value="mri">MRI</option></select></label>
               <label class="checkline" title="Training only. Composites each image's cells over a generated background drawn from many staining protocols and optical conditions, so the glass cannot carry class information. Evaluation uses raw images. Recommended for ALL, where the background alone predicts the class."><input id="background-randomization" type="checkbox"> Background randomization</label>
               <label class="checkline"><input id="pretrained" type="checkbox" checked> Pretrained</label>
               <button class="green" id="prepare" type="button">Prepare Dataset</button>
@@ -690,6 +691,7 @@
         folds: 5,
         ratios: [0.10, 0.25, 0.50, 0.75, 1.00],
         augmentation: document.getElementById("augmentation").checked,
+        augmentation_preset: document.getElementById("augmentation-preset").value,
         background_randomization: document.getElementById("background-randomization").checked,
         pretrained: document.getElementById("pretrained").checked,
         mlflow_experiment: document.getElementById("experiment").value.trim(),
@@ -2277,6 +2279,7 @@
       document.getElementById("experiment").value = "derms-r-benchmark";
       document.getElementById("deployment").value = "single";
       document.getElementById("augmentation").checked = true;
+      document.getElementById("augmentation-preset").value = "default";
       document.getElementById("background-randomization").checked = false;
       document.getElementById("pretrained").checked = true;
       document.getElementById("artifacts").checked = false;
@@ -2400,6 +2403,7 @@
       if (saved.near_dup_threshold != null) setValue("near-dup", saved.near_dup_threshold);
       if (saved.epoch_selection) setValue("epoch-selection", saved.epoch_selection);
       setChecked("augmentation", saved.augmentation);
+      if (saved.augmentation_preset) setValue("augmentation-preset", saved.augmentation_preset);
       setChecked("background-randomization", saved.background_randomization);
       setChecked("pretrained", saved.pretrained);
       if (saved.mlflow_experiment) setValue("experiment", saved.mlflow_experiment);

@@ -82,8 +82,54 @@ def _gauss_noise(p):
     return A.GaussNoise(var_limit=(10.0, 40.0), p=p)
 
 
+AUGMENTATION_PRESETS = ('default', 'mri')
+
+
+def _mri_affine(p, rotation):
+    """Small in-plane rotation, scale (0.9-1.1) and translation (+-5%); black fill outside the frame."""
+    kwargs = dict(scale=(0.9, 1.1), translate_percent=(-0.05, 0.05), rotate=(-rotation, rotation),
+                  border_mode=cv2.BORDER_CONSTANT, p=p)
+    kwargs['fill' if _supports_kwarg(A.Affine, 'fill') else 'cval'] = 0
+    return A.Affine(**kwargs)
+
+
+def _mri_intensity(p):
+    """Scanner gain / window variation: brightness +-15%, contrast +-15%."""
+    if p <= 0:
+        return None
+    if _supports_kwarg(A.RandomBrightnessContrast, 'brightness_range'):
+        return A.RandomBrightnessContrast(brightness_range=(-0.15, 0.15), contrast_range=(-0.15, 0.15), p=p)
+    return A.RandomBrightnessContrast(brightness_limit=0.15, contrast_limit=0.15, p=p)
+
+
+def mri_augmentations(cfg):
+    """Greyscale-MRI train-time transforms: geometry and intensity only, no hue/saturation/LAB shifts.
+
+    Honours the flip, rotation, brightness/contrast, noise and blur options of the default preset; the
+    HSV and LAB probabilities are ignored because T1/T2 slices carry no stain colour to perturb.
+    """
+    ops = [
+        A.HorizontalFlip(p=cfg.get('flip_probability', 0.5)),
+        _mri_affine(cfg.get('rotation_probability', 1.0), cfg.get('rotation', 20.0)),
+    ]
+    gamma = A.RandomGamma(gamma_limit=(80, 120), p=0.5)
+    for item in (_mri_intensity(cfg.get('brightness_contrast_probability', 0.8)), gamma,
+                 _gauss_noise(cfg.get('gauss_noise_probability', 0.15))):
+        if item is not None:
+            ops.append(item)
+    blur_p = cfg.get('blur_probability', 0.15)
+    if blur_p > 0:
+        ops.append(A.Blur(blur_limit=(3, 3), p=blur_p))
+    return ops
+
+
 def training_augmentations(cfg):
-    """Ordered E2E train-time transforms, excluding resize/normalize/tensor."""
+    """Ordered train-time transforms, excluding resize/normalize/tensor (E2E default, or the MRI preset)."""
+    preset = cfg.get('augmentation_preset', 'default')
+    if preset == 'mri':
+        return mri_augmentations(cfg)
+    if preset != 'default':
+        raise ValueError(f'Unknown augmentation preset {preset!r}; choose from {AUGMENTATION_PRESETS}.')
     ops = [
         A.HorizontalFlip(p=cfg.get('flip_probability', 0.5)),
         A.Rotate(limit=cfg.get('rotation', 20.0), p=cfg.get('rotation_probability', 1.0),

@@ -35,6 +35,7 @@ from torchvision import datasets as tv
 from .config import *
 from .utils import *
 from .datasets import *
+from .augmentation import AUGMENTATION_PRESETS
 from .models import *
 from .metric import derms_r, metric_kwargs, trainable_parameter_count
 from .normalization import add_normalized_column
@@ -654,6 +655,9 @@ def parser():
                         'raw images (see derms/background.py)')
     p.add_argument('--pretrained', action=argparse.BooleanOptionalAction, default=True)
     p.add_argument('--augmentation', action=argparse.BooleanOptionalAction, default=True)
+    p.add_argument('--augmentation-preset', choices=AUGMENTATION_PRESETS, default='default',
+                   help="'mri': geometry and intensity augmentation for greyscale MRI (no hue/saturation/LAB "
+                        "shifts); 'default': the E2E stain/illumination policy")
     p.add_argument('--flip-probability', type=float, default=0.5)
     p.add_argument('--rotation', type=float, default=20.0)
     p.add_argument('--rotation-probability', type=float, default=1.0)
@@ -717,6 +721,7 @@ def main():
            and not (k == 'cv_strategy' and v == CV_STRATEGIES[0])  # defaults omitted: keep old config hashes valid
            and not (k == 'near_dup_threshold' and not v)
            and not (k == 'epoch_selection' and v == 'best')
+           and not (k == 'augmentation_preset' and v == 'default')
            and not (k == 'background_randomization' and not v)}
     cfg.update(schema=SCHEMA, ratios=list(RATIOS), folds=FOLDS, image_size=224,
                normalization={'mean': MEAN, 'std': STD}, precision='float32',

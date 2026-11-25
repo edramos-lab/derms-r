@@ -1050,6 +1050,19 @@ class EpochSelectionOptionTests(unittest.TestCase):
             parse_runs(fixed_payload(epoch_selection="validation"))
 
 
+class AugmentationPresetOptionTests(unittest.TestCase):
+    def test_mri_preset_reaches_the_training_command_only_when_chosen(self):
+        from orchestrator.launcher import train_args
+        default = train_args(parse_runs(fixed_payload())[0], None)
+        self.assertNotIn("--augmentation-preset", default)
+        mri = train_args(parse_runs(fixed_payload(augmentation_preset="mri"))[0], None)
+        self.assertEqual(mri[mri.index("--augmentation-preset") + 1], "mri")
+
+    def test_unknown_preset_is_rejected(self):
+        with self.assertRaises(ConfigError):
+            parse_runs(fixed_payload(augmentation_preset="stain"))
+
+
 class BackgroundRandomizationOptionTests(unittest.TestCase):
     def test_flag_reaches_the_training_command_only_when_on(self):
         from orchestrator.launcher import train_args

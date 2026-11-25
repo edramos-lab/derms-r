@@ -177,6 +177,7 @@ class RunSpec:
     cv_strategy: str = "StratifiedKFold"
     near_dup_threshold: int = 0
     epoch_selection: str = "best"
+    augmentation_preset: str = "default"
     background_randomization: bool = False
 
 
@@ -341,6 +342,9 @@ def _shared(payload, datasets, models):
     epoch_selection = str(payload.get("epoch_selection") or "best")
     if epoch_selection not in ("best", "last"):
         raise ConfigError("Epoch selection must be 'best' or 'last'.")
+    augmentation_preset = str(payload.get("augmentation_preset") or "default")
+    if augmentation_preset not in ("default", "mri"):
+        raise ConfigError("Augmentation preset must be 'default' or 'mri'.")
     background_randomization = bool(payload.get("background_randomization", False))
     experiment = str(payload.get("mlflow_experiment") or "derms-r-benchmark").strip()
     if not experiment:
@@ -361,6 +365,7 @@ def _shared(payload, datasets, models):
         "cv_strategy": cv_strategy,
         "near_dup_threshold": near_dup_threshold,
         "epoch_selection": epoch_selection,
+        "augmentation_preset": augmentation_preset,
         "background_randomization": background_randomization,
         "augmentation": bool(payload.get("augmentation", True)),
         "pretrained": bool(payload.get("pretrained", True)),
@@ -453,6 +458,8 @@ def train_args(run: RunSpec, tracking_uri: str | None, resume: bool = False):
         args += ["--near-dup-threshold", str(run.near_dup_threshold)]
     if run.epoch_selection != "best":
         args += ["--epoch-selection", run.epoch_selection]
+    if run.augmentation_preset != "default":
+        args += ["--augmentation-preset", run.augmentation_preset]
     if run.background_randomization:
         args.append("--background-randomization")
     if not run.augmentation:
@@ -540,6 +547,8 @@ def lock_args(job: dict, dataset: str, tracking_uri: str | None):
         args += ["--near-dup-threshold", str(job["near_dup_threshold"])]
     if job.get("epoch_selection", "best") != "best":
         args += ["--epoch-selection", job["epoch_selection"]]
+    if job.get("augmentation_preset", "default") != "default":
+        args += ["--augmentation-preset", job["augmentation_preset"]]
     if job.get("background_randomization"):
         args.append("--background-randomization")
     if not job.get("augmentation", True):

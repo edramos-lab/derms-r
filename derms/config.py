@@ -17,16 +17,18 @@ REGISTRY = {
     'xception41': 'xception41.tf_in1k',
     'inception_v4': 'inception_v4.tf_in1k',
     'vit_base': 'vit_base_patch16_224.augreg_in1k',
+    'deit3_small': 'deit3_small_patch16_224.fb_in1k',
     'deit3_base': 'deit3_base_patch16_224.fb_in1k',
     'swin_tiny': 'swin_tiny_patch4_window7_224.ms_in1k',
     'maxvit_tiny': 'maxvit_tiny_tf_224.in1k',
+    'coatnet_0': 'coatnet_0_rw_224.sw_in1k',
     'nextvit_base': 'nextvit_base.bd_in1k',
     'efficientvit_b0': 'efficientvit_b0.r224_in1k',
     'mobilenetv4': 'mobilenetv4_conv_small.e2400_r224_in1k',
 }
-DATASETS = ('cifar10', 'cifar100', 'flowers102', 'food101', 'all', 'bloodmnist', 'Footprint-Type')
+DATASETS = ('cifar10', 'cifar100', 'flowers102', 'food101', 'all', 'bloodmnist', 'Footprint-Type', 'Msoud_v2', 'BRISC2025_test')
 # Dataset names backed by this repo's own ImageFolder layout (development/test
 # folders under datasets/<name>), as opposed to a torchvision-provided dataset.
-IMAGEFOLDER_DATASETS = ('all', 'bloodmnist', 'Footprint-Type')
+IMAGEFOLDER_DATASETS = ('all', 'bloodmnist', 'Footprint-Type', 'Msoud_v2', 'BRISC2025_test')
 MEAN, STD = (0.485, 0.456, 0.406), (0.229, 0.224, 0.225)
 SCHEMA = 5

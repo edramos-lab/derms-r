@@ -55,9 +55,11 @@ MODEL_LABELS = {
     "xception41": "Xception41",
     "inception_v4": "Inception-v4",
     "vit_base": "ViT-Base",
+    "deit3_small": "DeiT3-Small",
     "deit3_base": "DeiT3-Base",
     "swin_tiny": "Swin-Tiny",
     "maxvit_tiny": "MaxViT-Tiny",
+    "coatnet_0": "CoAtNet-0",
     "nextvit_base": "NextViT-Base",
     "efficientvit_b0": "EfficientViT-B0",
     "mobilenetv4": "MobileNetV4",
@@ -77,6 +79,8 @@ DATASET_CLASSES = {
     "food101": 101,
     "all": None,
     "Footprint-Type": 9,
+    "Msoud_v2": 4,
+    "BRISC2025_test": 4,
 }
 
 

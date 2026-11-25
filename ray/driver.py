@@ -27,8 +27,8 @@ import ray
 
 MODELS = [
     "resnet50", "efficientnet_b0", "efficientnetv2_s", "convnextv2_tiny",
-    "xception41", "vit_base", "deit3_base", "swin_tiny", "maxvit_tiny",
-    "nextvit_base", "efficientvit_b0", "mobilenetv4",
+    "xception41", "vit_base", "deit3_small", "deit3_base", "swin_tiny", "maxvit_tiny",
+    "coatnet_0", "nextvit_base", "efficientvit_b0", "mobilenetv4",
 ]
 DATASETS = ["cifar10", "cifar100", "flowers102", "food101", "all"]
 
@@ -37,7 +37,7 @@ REF_IMG_S = {
     "mobilenetv4": 900, "efficientnet_b0": 550, "efficientvit_b0": 700,
     "resnet50": 500, "efficientnetv2_s": 380, "xception41": 350,
     "convnextv2_tiny": 300, "swin_tiny": 320, "maxvit_tiny": 220,
-    "nextvit_base": 260, "deit3_base": 230, "vit_base": 230,
+    "nextvit_base": 260, "deit3_small": 600, "coatnet_0": 380, "deit3_base": 230, "vit_base": 230,
 }
 N_DEV = {
     "cifar10": 50_000, "cifar100": 50_000, "flowers102": 2_040,

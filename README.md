@@ -1228,7 +1228,7 @@ python verify_benchmark.py
 python smoke_test.py
 ```
 
-The registry pins explicit ImageNet-1k checkpoint tags in `timm==1.0.29`. Aliases are: `resnet50`, `efficientnet_b0`, `efficientnetv2_s`, `convnextv2_tiny`, `xception41`, `inception_v4`, `vit_base`, `deit3_base`, `swin_tiny`, `maxvit_tiny`, `nextvit_base`, `efficientvit_b0`, `mobilenetv4`. Missing IDs, unavailable weights, deterministic-operation failures, and training errors stop the run; models are never substituted.
+The registry pins explicit ImageNet-1k checkpoint tags in `timm==1.0.29`. Aliases are: `resnet50`, `efficientnet_b0`, `efficientnetv2_s`, `convnextv2_tiny`, `xception41`, `inception_v4`, `vit_base`, `deit3_small`, `deit3_base`, `swin_tiny`, `maxvit_tiny`, `coatnet_0`, `nextvit_base`, `efficientvit_b0`, `mobilenetv4`. Missing IDs, unavailable weights, deterministic-operation failures, and training errors stop the run; models are never substituted.
 
 ## Run, resume, evaluate
 

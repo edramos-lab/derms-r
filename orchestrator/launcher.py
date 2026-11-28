@@ -179,6 +179,7 @@ class RunSpec:
     epoch_selection: str = "best"
     augmentation_preset: str = "default"
     background_randomization: bool = False
+    ratios: tuple = tuple(RATIOS)
 
 
 def fmt_float(value):
@@ -287,12 +288,15 @@ def series(spec, name, *, integer=False):
 
 
 def _check_ratios(payload):
+    """The canonical DERMS-R ratios requested, in canonical order; any non-empty subset is allowed."""
     ratios = payload.get("ratios", canonical_ratios())
-    if not isinstance(ratios, list) or len(ratios) != len(RATIOS):
-        raise ConfigError("DERMS-R training uses the canonical ratios 0.10, 0.25, 0.50, 0.75, and 1.00.")
-    for got, expected in zip(ratios, RATIOS):
-        if not math.isclose(_as_number(got, "ratio"), expected, rel_tol=0, abs_tol=1e-9):
-            raise ConfigError("DERMS-R training uses the canonical ratios 0.10, 0.25, 0.50, 0.75, and 1.00.")
+    if not isinstance(ratios, list) or not ratios:
+        raise ConfigError("Select at least one training ratio from 0.10, 0.25, 0.50, 0.75, 1.00.")
+    values = [_as_number(got, "ratio") for got in ratios]
+    chosen = [r for r in RATIOS if any(math.isclose(v, r, rel_tol=0, abs_tol=1e-9) for v in values)]
+    if len(chosen) != len(values):
+        raise ConfigError("Training ratios must be distinct values from 0.10, 0.25, 0.50, 0.75, 1.00.")
+    return tuple(float(r) for r in chosen)
 
 
 def _check_names(payload):
@@ -317,7 +321,7 @@ def _shared(payload, datasets, models):
     folds = payload.get("folds", FOLDS)
     if int(folds) != FOLDS:
         raise ConfigError(f"K-folds is fixed at {FOLDS} by the DERMS-R protocol.")
-    _check_ratios(payload)
+    ratios = _check_ratios(payload)
     device = str(payload.get("device") or "cpu")
     if device != "cpu" and not device.startswith("cuda"):
         raise ConfigError("Device must be cpu or cuda[:index].")
@@ -367,6 +371,7 @@ def _shared(payload, datasets, models):
         "epoch_selection": epoch_selection,
         "augmentation_preset": augmentation_preset,
         "background_randomization": background_randomization,
+        "ratios": ratios,
         "augmentation": bool(payload.get("augmentation", True)),
         "pretrained": bool(payload.get("pretrained", True)),
         "experiment": experiment,
@@ -460,6 +465,8 @@ def train_args(run: RunSpec, tracking_uri: str | None, resume: bool = False):
         args += ["--epoch-selection", run.epoch_selection]
     if run.augmentation_preset != "default":
         args += ["--augmentation-preset", run.augmentation_preset]
+    if tuple(run.ratios) != tuple(RATIOS):
+        args += ["--ratios", *[fmt_float(r) for r in run.ratios]]
     if run.background_randomization:
         args.append("--background-randomization")
     if not run.augmentation:
@@ -549,6 +556,8 @@ def lock_args(job: dict, dataset: str, tracking_uri: str | None):
         args += ["--epoch-selection", job["epoch_selection"]]
     if job.get("augmentation_preset", "default") != "default":
         args += ["--augmentation-preset", job["augmentation_preset"]]
+    if job.get("ratios") and tuple(job["ratios"]) != tuple(RATIOS):
+        args += ["--ratios", *[fmt_float(r) for r in job["ratios"]]]
     if job.get("background_randomization"):
         args.append("--background-randomization")
     if not job.get("augmentation", True):

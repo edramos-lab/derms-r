@@ -24,6 +24,7 @@ from orchestrator.launcher import (
     log_series,
     parse_runs,
     plan_mlflow,
+    train_args,
 )
 from orchestrator.eta import estimate_job_hours
 from orchestrator.mailer import MailError, Mailer
@@ -195,9 +196,19 @@ class ConfigTests(unittest.TestCase):
         self.assertEqual(len(runs), 1)
         self.assertEqual((runs[0].epochs, runs[0].batch_size), (50, 32))
 
-    def test_partial_ratios_are_rejected(self):
-        with self.assertRaises(ConfigError):
-            parse_runs(fixed_payload(ratios=[1.0]))
+    def test_ratio_subset_is_accepted_and_passed_to_train_py(self):
+        run = parse_runs(fixed_payload(ratios=[1.0]))[0]
+        self.assertEqual(run.ratios, (1.0,))
+        args = train_args(run, None)
+        self.assertEqual(args[args.index("--ratios") + 1:args.index("--ratios") + 2], ["1"])
+
+    def test_default_ratios_add_no_flag(self):
+        self.assertNotIn("--ratios", train_args(parse_runs(fixed_payload())[0], None))
+
+    def test_invalid_ratios_are_rejected(self):
+        for bad in ([], [0.3], [1.0, 1.0], "1.0"):
+            with self.assertRaises(ConfigError):
+                parse_runs(fixed_payload(ratios=bad))
 
     def test_cluster_mode_is_rejected(self):
         with self.assertRaises(ConfigError):
@@ -768,6 +779,55 @@ class SettingsStoreTests(unittest.TestCase):
         self.assertEqual(reloaded.data["window_start_hour"], 9)
         self.assertEqual(reloaded.data["window_end_hour"], 8)
         self.assertEqual(reloaded.data["training_defaults"], {"epochs": 10})
+
+
+class MaxParallelContainersTests(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.docker = FakeDocker()
+        self.app = App(docker=self.docker, settings=settings(Path(self.tmp.name)))
+        self.app.update_settings({"max_parallel_containers": 2})
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def test_default_is_unlimited_and_value_is_validated(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            self.assertEqual(SettingsStore(Path(tmp) / "s.json").data["max_parallel_containers"], 0)
+        with self.assertRaises(ConfigError):
+            self.app.update_settings({"max_parallel_containers": -1})
+        with self.assertRaises(ConfigError):
+            self.app.update_settings({"max_parallel_containers": "many"})
+
+    def test_runs_beyond_the_limit_are_queued_not_launched(self):
+        states = [self.app.start(fixed_payload())["jobs"][0]["state"] for _ in range(3)]
+        self.assertEqual(states, ["running", "running", "queued"])
+        self.assertEqual(len(self.docker.ran), 2)
+        queued = self.app.jobs[0]
+        self.assertTrue(queued["capacity_queued"])
+        self.assertIsNone(queued["container_name"])
+        self.assertIn(queued["id"], self.app._run_specs)
+
+    def test_queued_run_starts_when_a_slot_frees(self):
+        for _ in range(3):
+            self.app.start(fixed_payload())
+        queued = self.app.jobs[0]
+        with self.app._lock:
+            self.app._apply_window_unlocked()
+        self.assertEqual(queued["state"], "queued")  # both slots still busy
+        self.docker.state_result = {"status": "exited", "exit_code": 0}
+        with self.app._lock:
+            self.app._apply_window_unlocked()
+        self.assertEqual(queued["state"], "running")
+        self.assertFalse(queued["capacity_queued"])
+        self.assertEqual(len(self.docker.ran), 3)
+
+    def test_zero_means_unlimited(self):
+        self.app.update_settings({"max_parallel_containers": 0})
+        for _ in range(4):
+            self.app.start(fixed_payload())
+        self.assertEqual(len(self.docker.ran), 4)
+
 
 
 class SettingsApiAndGpuMonitoringTests(unittest.TestCase):

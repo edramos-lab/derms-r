@@ -367,6 +367,14 @@
           </div>
         </section>
         <section class="card">
+          <h2>Parallel Containers</h2>
+          <div class="muted">Maximum training containers running at once. Extra runs from a Range sweep wait as "queued" and start automatically as running ones finish. Use this to avoid GPU out-of-memory when several runs share one card. 0 = no limit.</div>
+          <div class="field" style="margin-top:14px;max-width:420px">
+            <label class="k">Max parallel containers</label>
+            <input id="max-parallel" type="number" step="1" min="0">
+          </div>
+        </section>
+        <section class="card">
           <h2>GPU Temperature Alerts</h2>
           <div class="muted">Emails recipients when a GPU crosses the threshold, repeating no more often than the interval below.</div>
           <div class="field" style="margin-top:14px;max-width:420px">
@@ -493,7 +501,7 @@
             <label><input type="checkbox" name="ratio-highlight" value="0.75" checked><span>75%</span></label>
             <label><input type="checkbox" name="ratio-highlight" value="1.00" checked><span>100%</span></label>
           </div>
-          <div class="muted" style="margin-top:8px">Canonical DERMS-R ratios. Every architecture is scored at all five regardless of which are highlighted here — this selector is for visual reference only.</div>
+          <div class="muted" style="margin-top:8px">Training ratios to run. All five is the full DERMS-R protocol (the ratio is chosen by DERMS-R score); selecting fewer, e.g. 100% only, trains faster but skips that selection.</div>
         </section>
 
         <section class="card">
@@ -689,7 +697,7 @@
         near_dup_threshold: Number(document.getElementById("near-dup").value) || 0,
         epoch_selection: document.getElementById("epoch-selection").value,
         folds: 5,
-        ratios: [0.10, 0.25, 0.50, 0.75, 1.00],
+        ratios: checked("ratio-highlight").map(Number),
         augmentation: document.getElementById("augmentation").checked,
         augmentation_preset: document.getElementById("augmentation-preset").value,
         background_randomization: document.getElementById("background-randomization").checked,
@@ -786,7 +794,7 @@
     function updateComboNote() {
       const models = Math.max(checked("model").length, 0);
       const datasets = Math.max(checked("dataset").length, 0);
-      const fits = `${models} architectures × 5 folds × 5 ratios`;
+      const fits = `${models} architectures × 5 folds × ${Math.max(checked("ratio-highlight").length, 1)} ratios`;
       const note = document.getElementById("combo-note");
       if (state.mode === "fixed") {
         note.className = "note";
@@ -1196,6 +1204,7 @@
       const data = await response.json();
       setHour12("window-start-hour", "window-start-period", data.window_start_hour);
       setHour12("window-end-hour", "window-end-period", data.window_end_hour);
+      document.getElementById("max-parallel").value = data.max_parallel_containers ?? 0;
       document.getElementById("gpu-threshold").value = data.gpu_temp_threshold_c;
       document.getElementById("gpu-alert-interval").value = data.gpu_alert_interval_minutes;
       document.getElementById("gpu-alert-emails").value = (data.gpu_alert_emails || []).join(", ");
@@ -1205,6 +1214,7 @@
       const payload = {
         window_start_hour: getHour24("window-start-hour", "window-start-period"),
         window_end_hour: getHour24("window-end-hour", "window-end-period"),
+        max_parallel_containers: Number(document.getElementById("max-parallel").value || 0),
         gpu_temp_threshold_c: Number(document.getElementById("gpu-threshold").value),
         gpu_alert_interval_minutes: Number(document.getElementById("gpu-alert-interval").value),
         gpu_alert_emails: document.getElementById("gpu-alert-emails").value.trim(),

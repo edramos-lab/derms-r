@@ -10,6 +10,7 @@ DEFAULTS = {
     "gpu_temp_threshold_c": 85.0,
     "gpu_alert_interval_minutes": 10,
     "gpu_alert_emails": [],
+    "max_parallel_containers": 0,  # 0 = unlimited
     "training_defaults": {},
 }
 

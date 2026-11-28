@@ -763,11 +763,44 @@ class App:
                 patch["gpu_alert_emails"] = parse_emails(raw if isinstance(raw, str) else "")
             except ValueError as error:
                 raise ConfigError(str(error)) from None
+        if "max_parallel_containers" in payload:
+            try:
+                limit = int(payload["max_parallel_containers"])
+            except (TypeError, ValueError):
+                raise ConfigError("Max parallel containers must be a whole number.") from None
+            if limit < 0:
+                raise ConfigError("Max parallel containers must be 0 (unlimited) or greater.")
+            patch["max_parallel_containers"] = limit
         if "training_defaults" in payload:
             if not isinstance(payload["training_defaults"], dict):
                 raise ConfigError("training_defaults must be a JSON object.")
             patch["training_defaults"] = payload["training_defaults"]
         return self.settings_store.update(patch)
+
+    def _slot_free_unlocked(self):
+        """True when fewer than max_parallel_containers jobs are running (0 = no limit)."""
+        limit = self.settings_store.data.get("max_parallel_containers", 0)
+        if not limit:
+            return True
+        active = sum(1 for job in self.jobs
+                     if job.get("container_name") and job.get("state") in {"running", "created", "restarting"})
+        return active < limit
+
+    def _drain_capacity_queue_unlocked(self):
+        """Start jobs held back by max_parallel_containers, oldest first, as slots free up."""
+        window_open = in_window(start_hour=self.settings_store.data["window_start_hour"],
+                                 end_hour=self.settings_store.data["window_end_hour"])
+        changed = False
+        for job in reversed(self.jobs):
+            if job["state"] != "queued" or not job.get("capacity_queued"):
+                continue
+            if job.get("window") and not window_open:
+                continue
+            if not self._slot_free_unlocked():
+                break
+            self._launch_queued_unlocked(job)
+            changed = True
+        return changed
 
     def _launch_queued_unlocked(self, job):
         run = self._run_specs.get(job["id"])
@@ -790,6 +823,7 @@ class App:
         try:
             job["container_id"] = self.docker.run_detached(argv)
             job["state"] = "running"
+            job["capacity_queued"] = False
             job["started_at"] = datetime.now(timezone.utc).isoformat()
             job["error"] = None
             if job.get("resumed"):
@@ -843,6 +877,8 @@ class App:
             if not job.get("window"):
                 continue
             if job["state"] == "queued" and window_open:
+                if not self._slot_free_unlocked():
+                    continue
                 if job.get("action") == "train":
                     self._launch_queued_unlocked(job)
                 else:
@@ -861,6 +897,8 @@ class App:
                 job["container_id"] = None
                 self._notify(job, "paused")
                 changed = True
+        if self._drain_capacity_queue_unlocked():
+            changed = True
         if changed:
             self._write()
 
@@ -1025,11 +1063,17 @@ class App:
             if not dry_run:
                 self.docker.prepare_network(plan)
         created = []
+        if not dry_run:
+            with self._lock:
+                self._refresh_unlocked()  # finished containers must not hold a slot
         for run in runs:
             job_id = secrets.token_hex(4)
-            queued = not dry_run and run.window and not in_window(
+            window_queued = not dry_run and run.window and not in_window(
                 start_hour=self.settings_store.data["window_start_hour"],
                 end_hour=self.settings_store.data["window_end_hour"])
+            with self._lock:
+                capacity_queued = not dry_run and not window_queued and not self._slot_free_unlocked()
+            queued = window_queued or capacity_queued
             if not dry_run:
                 allocate_output(self.settings, job_id)
             argv = container_argv(run, self.settings, plan, job_id)
@@ -1051,12 +1095,14 @@ class App:
                 "near_dup_threshold": run.near_dup_threshold,
                 "epoch_selection": run.epoch_selection,
                 "augmentation_preset": run.augmentation_preset,
+                "ratios": list(run.ratios),
                 "background_randomization": run.background_randomization,
                 "augmentation": run.augmentation,
                 "pretrained": run.pretrained,
                 "mlflow_experiment": run.experiment,
                 "mlflow_artifacts": run.artifacts,
                 "window": run.window,
+                "capacity_queued": capacity_queued,
                 "resumed": False,
                 "container_name": None if (dry_run or queued) else f"derms-train-{job_id}",
                 "container_id": None,
@@ -1075,14 +1121,15 @@ class App:
             if dry_run:
                 created.append(job)
                 continue
-            if run.window:
+            if run.window or capacity_queued:
                 # Keep the spec around even for an immediate launch: a window
                 # job can still be stopped and need relaunching later tonight.
                 self._run_specs[job_id] = run
             if queued:
                 with self._lock:
                     self.jobs.insert(0, job)
-                    self._notify(job, "queued")
+                    if window_queued:
+                        self._notify(job, "queued")
                     self._write()
                 created.append(job)
                 continue

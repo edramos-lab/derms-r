@@ -272,6 +272,11 @@ def _cell_summary(name, cfg, plan, output, model, ratio, n_folds, params):
     return cell, s
 
 
+def run_ratios(cfg):
+    """Training ratios this run covers: all five canonical ones unless --ratios narrowed them."""
+    return [float(r) for r in cfg.get('ratios', RATIOS)]
+
+
 def aggregate(name, cfg, plan, output, log_tracking=True, models=None):
     """Summarize completed sweeps. `models` limits it to architectures already finished
     (a provisional summary mid-run); cfg itself must stay untouched since run identities hash it."""
@@ -279,7 +284,7 @@ def aggregate(name, cfg, plan, output, log_tracking=True, models=None):
     params = metric_kwargs(cfg)
     n_folds = int(cfg.get('folds', FOLDS))
     for model in models or cfg['models']:
-        for ratio in RATIOS:
+        for ratio in run_ratios(cfg):
             cell, s = _cell_summary(name, cfg, plan, output, model, ratio, n_folds, params)
             rows.extend(cell)
             summary.append(s)
@@ -323,7 +328,7 @@ def benchmark(name, ds, plan, cfg, output, download=False):
     nclasses = len(plan['classes'])
     finished = []
     for model in cfg['models']:
-        for ratio in RATIOS:
+        for ratio in run_ratios(cfg):
             for fold, split in enumerate(plan['folds']):
                 directory = output / name / model / f'r{ratio:.2f}' / f'fold{fold}'
                 identity = run_identity(cfg, plan, model, ratio, fold)
@@ -396,7 +401,7 @@ def architecture_scores(name, cfg, plan, output, model):
     params = metric_kwargs(cfg)
     n_folds = int(cfg.get('folds', FOLDS))
     rows = []
-    for ratio in RATIOS:
+    for ratio in run_ratios(cfg):
         _, s = _cell_summary(name, cfg, plan, output, model, ratio, n_folds, params)
         rows.append({'ratio': ratio, 'derms_r_raw': s['derms_r_raw'],
                      'best_epoch_median': s['best_epoch_median'], 'summary': s})
@@ -655,6 +660,8 @@ def parser():
                         'raw images (see derms/background.py)')
     p.add_argument('--pretrained', action=argparse.BooleanOptionalAction, default=True)
     p.add_argument('--augmentation', action=argparse.BooleanOptionalAction, default=True)
+    p.add_argument('--ratios', type=float, nargs='+', default=list(RATIOS),
+                   help='Training-set ratios to run; default is the five canonical DERMS-R ratios.')
     p.add_argument('--augmentation-preset', choices=AUGMENTATION_PRESETS, default='default',
                    help="'mri': geometry and intensity augmentation for greyscale MRI (no hue/saturation/LAB "
                         "shifts); 'default': the E2E stain/illumination policy")
@@ -690,6 +697,10 @@ def main():
     if args.verify_models:
         print(json.dumps({'timm': timm.__version__, 'models': verify_registry(args.models)}, indent=2))
         return
+    chosen = [r for r in RATIOS if any(math.isclose(r, float(x), rel_tol=0, abs_tol=1e-9) for x in args.ratios)]
+    if not chosen or len(chosen) != len(set(float(x) for x in args.ratios)):
+        raise ValueError(f'--ratios must be a non-empty subset of {list(RATIOS)}.')
+    args.ratios = [float(r) for r in chosen]
     if args.epochs < 1 or args.batch_size < 2 or args.workers < 0 or args.threads < 1:
         raise ValueError('epochs/threads >=1, batch-size >=2 and workers >=0 required.')
     if not 0 < args.holdout < 1 or args.warmup < 1 or args.latency_repeats < 2:
@@ -723,7 +734,7 @@ def main():
            and not (k == 'epoch_selection' and v == 'best')
            and not (k == 'augmentation_preset' and v == 'default')
            and not (k == 'background_randomization' and not v)}
-    cfg.update(schema=SCHEMA, ratios=list(RATIOS), folds=FOLDS, image_size=224,
+    cfg.update(schema=SCHEMA, ratios=args.ratios, folds=FOLDS, image_size=224,
                normalization={'mean': MEAN, 'std': STD}, precision='float32',
                source_hashes={n: file_hash(project_root() / n) for n in source_files()},
                groups_sha256=file_hash(args.all_groups) if args.all_groups else None,

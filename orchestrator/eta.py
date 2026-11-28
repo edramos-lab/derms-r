@@ -99,5 +99,6 @@ def estimate_job_hours(job, history, params_by_model):
         if seconds_per_epoch is None:
             continue
         estimated_any = True
-        total_seconds += seconds_per_epoch * epochs * len(datasets) * RUN_COMBOS_PER_MODEL_DATASET
+        combos = len(job.get("ratios") or RATIOS) * FOLDS
+        total_seconds += seconds_per_epoch * epochs * len(datasets) * combos
     return total_seconds / 3600 if estimated_any else None
